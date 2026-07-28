@@ -669,7 +669,11 @@ export const MozambiqueMap: React.FC<MozambiqueMapProps> = ({ onOpenChatWith }) 
           }`}
         >
           <Truck className="w-4 h-4 text-amber-400 animate-pulse" />
-          <span>🚚 Rastreio GPS de Entregas      {activeTab === "MAP" ? (
+          <span>🚚 Rastreio GPS de Entregas</span>
+        </button>
+      </div>
+
+      {activeTab === "MAP" ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* INTERACTIVE MAP CANVAS & MACHAMBA LIST */}
           <div className="lg:col-span-2 bg-emerald-950/95 text-white rounded-3xl p-5 sm:p-6 shadow-xl relative min-h-[460px] flex flex-col justify-between overflow-hidden border border-emerald-800">
@@ -766,9 +770,6 @@ export const MozambiqueMap: React.FC<MozambiqueMapProps> = ({ onOpenChatWith }) 
                       </button>
                     );
                   })}
-                </div>
-              )}
-            </div>              })}
                 </div>
               )}
             </div>
