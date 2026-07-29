@@ -252,21 +252,6 @@ export const FarmerDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* 50 MT FEE STATUS WARNING (IF PENDING) */}
-      {!currentUser?.membershipFeePaid && (
-        <div className="bg-amber-50 border-2 border-amber-300 p-4 rounded-3xl text-amber-900 text-xs flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <ShieldAlert className="w-8 h-8 text-amber-600 shrink-0" />
-            <div>
-              <h4 className="font-bold text-slate-900">Conta 'Pendente de Pagamento da Taxa de Adesão'</h4>
-              <p className="text-[11px] text-amber-800 mt-0.5">
-                Efetue o pagamento único de 50 MT para a conta de recebimento oficial <strong className="font-mono">{receiverPhone}</strong> para desbloquear a publicação de produtos no mercado.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* 2. FINANCIAL STATS CARDS (ESCROW & WALLET) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-gradient-to-br from-emerald-800 to-green-950 text-white p-5 rounded-3xl shadow-md">

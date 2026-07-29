@@ -106,29 +106,26 @@ export const AuthScreen: React.FC = () => {
       }
     }
 
-    if (selectedRole === "FARMER") {
-      // Show mandatory 50 MT fee payment notice
-      setPaymentPhone(regPhone || "840000000");
-      setShowFarmerFeeModal(true);
-    } else {
-      // Buyers and drivers register directly
-      try {
-        registerUser({
-          name: regName || (selectedRole === "BUYER" ? "Novo Consumidor" : "Novo Transportador"),
-          phone: regPhone || "84" + Math.floor(1000000 + Math.random() * 9000000),
-          email: regEmail,
-          password: regPass,
-          province: regProvince,
-          district: regDistrict,
-          address: regAddress,
-          localidade: regLocalidade,
-          role: selectedRole,
-          vehicleType,
-          licensePlate: licensePlate || "MMT-" + Math.floor(10 + Math.random() * 89),
-        });
-      } catch (err: any) {
-        setRegisterError(err.message || "Erro ao efetuar registo.");
-      }
+    try {
+      registerUser({
+        name: regName || (selectedRole === "FARMER" ? "Novo Agricultor" : selectedRole === "BUYER" ? "Novo Consumidor" : "Novo Transportador"),
+        phone: regPhone || "84" + Math.floor(1000000 + Math.random() * 9000000),
+        email: regEmail,
+        password: regPass,
+        province: regProvince,
+        district: regDistrict,
+        address: regAddress,
+        localidade: regLocalidade,
+        role: selectedRole,
+        farmName: selectedRole === "FARMER" ? (farmName || `Machamba de ${regName || "Guava"}`) : undefined,
+        farmArea: selectedRole === "FARMER" ? (farmArea || "2 Hectares") : undefined,
+        cropsGrown: selectedRole === "FARMER" ? (cropsText ? cropsText.split(",").map((s) => s.trim()) : ["Tomate", "Pimento"]) : undefined,
+        bio: selectedRole === "FARMER" ? bio : undefined,
+        vehicleType,
+        licensePlate: licensePlate || "MMT-" + Math.floor(10 + Math.random() * 89),
+      });
+    } catch (err: any) {
+      setRegisterError(err.message || "Erro ao efetuar registo.");
     }
   };
 
@@ -542,12 +539,12 @@ export const AuthScreen: React.FC = () => {
                   )}
 
                   {selectedRole === "FARMER" && (
-                    <div className="p-3 bg-amber-950/60 border border-amber-500/40 rounded-2xl text-xs text-amber-200 flex items-start gap-2.5">
-                      <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    <div className="p-3 bg-emerald-950/60 border border-emerald-500/40 rounded-2xl text-xs text-emerald-200 flex items-start gap-2.5">
+                      <Info className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                       <div>
-                        <span className="font-bold text-amber-300">Taxa Única de Adesão (50 MT):</span>
-                        <p className="text-[11px] text-amber-200/90 mt-0.5 leading-relaxed">
-                          O registo do Agricultor inclui a taxa única de 50 MT paga via M-Pesa/e-Mola para manter a plataforma livre de fraudes e segura.
+                        <span className="font-bold text-emerald-300">Registo 100% Gratuito:</span>
+                        <p className="text-[11px] text-emerald-200/90 mt-0.5 leading-relaxed">
+                          O registo na AgroMoz é gratuito. Comece a publicar as suas colheitas e a vender diretamente aos compradores sem taxas de adesão.
                         </p>
                       </div>
                     </div>
@@ -778,113 +775,6 @@ export const AuthScreen: React.FC = () => {
       <div className="w-full text-center text-xs text-slate-500 pt-6">
         <p>© AgroMoz - Conectando o Sector Agrícola de Moçambique</p>
       </div>
-
-      {/* FARMER 50 MT FEE MODAL */}
-      {showFarmerFeeModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-900 text-white max-w-md w-full rounded-3xl p-6 shadow-2xl border border-emerald-500/40">
-            {!feePaidSuccess ? (
-              <>
-                <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center mb-4">
-                  <Smartphone className="w-6 h-6" />
-                </div>
-                <h3 className="text-lg font-bold text-white mb-1">
-                  Taxa Única de Adesão do Agricultor
-                </h3>
-                <p className="text-xs text-slate-300 mb-4 leading-relaxed">
-                  Para concluir o registo como Agricultor na AgroMoz, efetue a taxa de adesão de{" "}
-                  <strong className="text-amber-400 font-bold">50 MT</strong>. Esta taxa valida o seu perfil de produtor e evita fraudes.
-                </p>
-
-                <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 mb-4 text-xs">
-                  <div className="flex justify-between items-center py-1">
-                    <span className="text-slate-400">Valor da Taxa:</span>
-                    <span className="font-bold text-amber-400 text-sm">50,00 MT</span>
-                  </div>
-                  <div className="flex justify-between items-center py-1 border-t border-slate-800/80 mt-1 pt-1">
-                    <span className="text-slate-400">Conta Destino:</span>
-                    <span className="font-mono font-bold text-emerald-400">{receiverPhone}</span>
-                  </div>
-                </div>
-
-                {/* Payment Method Selector */}
-                <div className="space-y-2 mb-4">
-                  <label className="block text-xs font-semibold text-slate-300">
-                    Método de Pagamento Mobile Money
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod("M-Pesa")}
-                      className={`py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all ${
-                        paymentMethod === "M-Pesa"
-                          ? "bg-red-950/80 border-red-500 text-red-300"
-                          : "bg-slate-950 border-slate-800 text-slate-400"
-                      }`}
-                    >
-                      <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
-                      M-Pesa (Vodacom)
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod("e-Mola")}
-                      className={`py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all ${
-                        paymentMethod === "e-Mola"
-                          ? "bg-amber-950/80 border-amber-500 text-amber-300"
-                          : "bg-slate-950 border-slate-800 text-slate-400"
-                      }`}
-                    >
-                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                      e-Mola (Movitel)
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Número de Telefone para Débito
-                  </label>
-                  <input
-                    type="tel"
-                    value={paymentPhone}
-                    onChange={(e) => setPaymentPhone(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-800 text-white rounded-xl outline-none"
-                  />
-                </div>
-
-                <div className="flex gap-2 mt-6">
-                  <button
-                    onClick={() => setShowFarmerFeeModal(false)}
-                    className="flex-1 py-2.5 text-xs font-semibold text-slate-400 hover:text-white bg-slate-800 rounded-xl"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    onClick={handleConfirmFarmerFee}
-                    disabled={isProcessingPayment}
-                    className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg flex items-center justify-center gap-2"
-                  >
-                    {isProcessingPayment ? "A autorizar PIN..." : "Pagar 50 MT e Ativar Conta"}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div className="text-center py-6">
-                <div className="w-16 h-16 rounded-full bg-emerald-950 border border-emerald-500 text-emerald-400 flex items-center justify-center mx-auto mb-4">
-                  <CheckCircle2 className="w-10 h-10" />
-                </div>
-                <h3 className="text-xl font-bold text-white mb-1">
-                  Pagamento Confirmado!
-                </h3>
-                <p className="text-xs text-slate-300">
-                  A sua taxa de adesão de 50 MT foi processada com sucesso. A sua conta de Agricultor na AgroMoz foi ativada com sucesso!
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 };

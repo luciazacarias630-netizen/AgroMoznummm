@@ -627,8 +627,8 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
       rating: 5.0,
       totalRatings: 0,
       isApproved: userRole !== "DRIVER", // drivers need admin approval
-      membershipFeePaid: !isFarmer, // Farmers must pay 50 MT
-      membershipFeeStatus: isFarmer ? "Pendente" : "Aprovado",
+      membershipFeePaid: true, // Free registration - no 50 MT fee required
+      membershipFeeStatus: "Aprovado",
       farmName: newUser.farmName || "",
       farmArea: newUser.farmArea || "",
       cropsGrown: newUser.cropsGrown || [],
@@ -640,11 +640,7 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUsers((prev) => [...prev, user]);
     setCurrentUser(user);
 
-    if (isFarmer) {
-      addNotification(`Conta de Agricultor criada! Por favor conclua a taxa de adesão de 50 MT para ativar.`);
-    } else {
-      addNotification(`Conta criada com sucesso! Bem-vindo à AgroMoz, ${user.name}.`);
-    }
+    addNotification(`Conta criada com sucesso! Bem-vindo à AgroMoz, ${user.name}.`);
 
     return user;
   };
@@ -693,10 +689,6 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const addProduct = (product: Partial<Product>): Product => {
     if (!currentUser || currentUser.role !== "FARMER") {
       throw new Error("Apenas agricultores registados podem publicar produtos.");
-    }
-
-    if (!currentUser.membershipFeePaid) {
-      throw new Error("A sua conta está 'Pendente de Pagamento' (50 MT). Pague a taxa de adesão para poder vender.");
     }
 
     const basePrice = Number(product.basePricePerUnit) || Number(product.pricePerUnit) || 100;

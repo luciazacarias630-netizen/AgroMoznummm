@@ -112,7 +112,7 @@ export const AdminDashboard: React.FC = () => {
           <div>
             <h1 className="text-xl font-bold font-serif">Painel Administrativo AgroMoz</h1>
             <p className="text-xs text-slate-400">
-              Controlo global da plataforma, taxa de adesão 50 MT, pagamentos e Inteligência Agrícola.
+              Controlo global da plataforma, aprovações, pagamentos e Inteligência Agrícola.
             </p>
           </div>
         </div>
@@ -407,16 +407,16 @@ export const AdminDashboard: React.FC = () => {
       {/* CONTENT FOR TAB 1: PENDING APPROVALS */}
       {activeTab === "APROVACOES" && (
         <div className="space-y-6">
-          {/* Farmers 50 MT Fee Approvals */}
+          {/* Farmers Registration Status */}
           <div className="bg-white p-6 rounded-3xl shadow-xs border border-emerald-100 space-y-4">
             <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
               <Sprout className="w-5 h-5 text-emerald-700" />
-              Agricultores com Taxa de Adesão (50 MT) Pendente ({pendingFarmers.length})
+              Verificação e Registo de Agricultores ({pendingFarmers.length} Pendentes)
             </h3>
 
             {pendingFarmers.length === 0 ? (
               <p className="text-xs text-slate-500 py-4 text-center bg-slate-50 rounded-2xl">
-                Não existem agricultores com taxa de adesão pendente.
+                Todos os agricultores registados estão ativos com inscrição gratuita.
               </p>
             ) : (
               <div className="space-y-3">
@@ -431,7 +431,7 @@ export const AdminDashboard: React.FC = () => {
                         Machamba: {f.farmName || "Sem nome"} — {f.district}, {f.province}
                       </p>
                       <span className="text-[10px] font-bold text-amber-800">
-                        Estado: Pendente de verificação M-Pesa / e-Mola (50 MT)
+                        Estado: Pendente de Aprovação
                       </span>
                     </div>
 
@@ -446,7 +446,7 @@ export const AdminDashboard: React.FC = () => {
                         onClick={() => approveFarmerFee(f.id)}
                         className="py-2 px-4 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl shadow-xs flex items-center gap-1"
                       >
-                        <CheckCircle2 className="w-4 h-4 text-amber-300" /> Confirmar 50 MT & Ativar
+                        <CheckCircle2 className="w-4 h-4 text-amber-300" /> Aprovar Agricultor
                       </button>
                     </div>
                   </div>
@@ -466,7 +466,7 @@ export const AdminDashboard: React.FC = () => {
           </h3>
 
           <p className="text-xs text-slate-600 leading-relaxed">
-            Todos os pagamentos de comissões e taxas de adesão da AgroMoz são encaminhados para a conta principal M-Pesa ou e-Mola abaixo configurada.
+            Todos os pagamentos de comissões e serviços da AgroMoz são encaminhados para a conta principal M-Pesa ou e-Mola abaixo configurada.
           </p>
 
           <form onSubmit={handleUpdateReceiverPhone} className="space-y-4 text-xs">
