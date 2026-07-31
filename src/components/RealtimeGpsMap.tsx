@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   Smartphone,
   Maximize2,
+  Minimize2,
   CheckCircle2,
   AlertCircle,
   Sparkles,
@@ -88,6 +89,16 @@ export const RealtimeGpsMap: React.FC<RealtimeGpsMapProps> = ({
     isBackgroundSupported: true,
   });
   const [showPermissionsModal, setShowPermissionsModal] = useState<boolean>(false);
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+
+  const toggleFullscreen = () => {
+    setIsFullscreen((prev) => !prev);
+    setTimeout(() => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.invalidateSize();
+      }
+    }, 200);
+  };
 
   const simulationRef = useRef<NodeJS.Timeout | null>(null);
   const watchGpsRef = useRef<number | null>(null);
@@ -112,12 +123,24 @@ export const RealtimeGpsMap: React.FC<RealtimeGpsMapProps> = ({
     return Math.round(R * c * 10) / 10; // Distance in km
   };
 
-  // Sync state whenever order props change
+  // Sync state whenever order props change & deactivate GPS when delivered
   useEffect(() => {
     if (order.driverCurrentLocation) {
       setCurrentDriverPos(order.driverCurrentLocation);
     }
-  }, [order.driverCurrentLocation]);
+    if (order.deliveryStatus === "Entregue") {
+      if (watchGpsRef.current !== null) {
+        navigator.geolocation.clearWatch(watchGpsRef.current);
+        watchGpsRef.current = null;
+      }
+      if (simulationRef.current) {
+        clearInterval(simulationRef.current);
+        simulationRef.current = null;
+      }
+      setIsLiveGpsActive(false);
+      setIsSimulating(false);
+    }
+  }, [order.driverCurrentLocation, order.deliveryStatus]);
 
   // Recalculate distance & ETA
   useEffect(() => {
@@ -422,10 +445,16 @@ export const RealtimeGpsMap: React.FC<RealtimeGpsMapProps> = ({
   }, []);
 
   return (
-    <div className="bg-white rounded-3xl overflow-hidden border border-slate-200 shadow-md space-y-0">
+    <div
+      className={
+        isFullscreen
+          ? "fixed inset-0 z-[99999] w-screen h-screen bg-slate-950 flex flex-col p-0 m-0 overflow-hidden text-slate-100 animate-fade-in"
+          : "bg-white rounded-3xl overflow-hidden border border-slate-200 shadow-md space-y-0"
+      }
+    >
       
       {/* STATUS HEADER BAR */}
-      <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 text-white p-3.5 px-4 flex flex-wrap items-center justify-between gap-3 text-xs border-b border-emerald-900/60">
+      <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 text-white p-3.5 px-4 flex flex-wrap items-center justify-between gap-3 text-xs border-b border-emerald-900/60 shrink-0">
         <div className="flex items-center gap-2">
           <span className="relative flex h-3 w-3">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -439,8 +468,8 @@ export const RealtimeGpsMap: React.FC<RealtimeGpsMapProps> = ({
           </span>
         </div>
 
-        {/* METRICS BADGES */}
-        <div className="flex items-center gap-3">
+        {/* METRICS BADGES & FULLSCREEN BUTTON */}
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-1.5 bg-slate-800/90 px-2.5 py-1 rounded-xl border border-slate-700">
             <Clock className="w-3.5 h-3.5 text-amber-400" />
             <span className="text-slate-300 text-[11px]">Chegada em:</span>
@@ -452,11 +481,33 @@ export const RealtimeGpsMap: React.FC<RealtimeGpsMapProps> = ({
             <span className="text-slate-300 text-[11px]">Distância:</span>
             <strong className="text-white font-extrabold text-xs">{distanceKm} km</strong>
           </div>
+
+          <button
+            onClick={toggleFullscreen}
+            className={`px-3 py-1.5 font-black rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer ${
+              isFullscreen
+                ? "bg-rose-600 hover:bg-rose-700 text-white"
+                : "bg-amber-400 hover:bg-amber-300 text-slate-950"
+            }`}
+            title={isFullscreen ? "Sair do modo ecrã inteiro" : "Expandir GPS para ecrã inteiro"}
+          >
+            {isFullscreen ? (
+              <>
+                <Minimize2 className="w-4 h-4" />
+                <span>Sair de Ecrã Inteiro</span>
+              </>
+            ) : (
+              <>
+                <Maximize2 className="w-4 h-4" />
+                <span>Ecrã Inteiro (Fullscreen)</span>
+              </>
+            )}
+          </button>
         </div>
       </div>
 
       {/* LEAFLET OPENSTREETMAP CONTAINER */}
-      <div className={`relative ${height} w-full bg-slate-100 z-0`}>
+      <div className={`relative ${isFullscreen ? "flex-1 h-full min-h-[500px]" : height} w-full bg-slate-100 z-0`}>
         <div ref={mapContainerRef} className="w-full h-full" />
 
         {/* OVERLAY QUICK ACTION BUTTONS */}
@@ -474,6 +525,13 @@ export const RealtimeGpsMap: React.FC<RealtimeGpsMapProps> = ({
             className="p-2.5 bg-white text-slate-900 hover:bg-slate-100 rounded-2xl shadow-xl border border-slate-200 font-bold text-xs flex items-center justify-center transition-all active:scale-95"
           >
             <Maximize2 className="w-4 h-4 text-amber-600" />
+          </button>
+          <button
+            onClick={toggleFullscreen}
+            title={isFullscreen ? "Sair do Ecrã Inteiro" : "Modo Ecrã Inteiro (Fullscreen)"}
+            className="p-2.5 bg-amber-400 hover:bg-amber-500 text-slate-950 rounded-2xl shadow-xl border border-amber-300 font-extrabold text-xs flex items-center justify-center transition-all active:scale-95 cursor-pointer"
+          >
+            {isFullscreen ? <Minimize2 className="w-4 h-4 text-slate-950" /> : <Maximize2 className="w-4 h-4 text-slate-950" />}
           </button>
         </div>
 
@@ -542,64 +600,87 @@ export const RealtimeGpsMap: React.FC<RealtimeGpsMapProps> = ({
             </button>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
-              <Compass className="w-4 h-4 text-emerald-700" />
-              Painel de Controlo do GPS do Transportador:
-            </span>
-
-            <div className="flex items-center gap-2">
-              {/* REAL DEVICE GPS BUTTON */}
-              <button
-                onClick={toggleLiveDeviceGps}
-                className={`px-3 py-1.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all shadow-xs ${
-                  isLiveGpsActive
-                    ? "bg-rose-600 hover:bg-rose-700 text-white animate-pulse"
-                    : "bg-emerald-800 hover:bg-emerald-900 text-white"
-                }`}
-              >
-                <Smartphone className="w-3.5 h-3.5 text-amber-300" />
-                <span>{isLiveGpsActive ? "Parar GPS Real" : "Ativar GPS do Dispositivo"}</span>
-              </button>
-
-              {/* SIMULATION TOGGLE */}
-              <button
-                onClick={toggleSimulation}
-                className={`px-3 py-1.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all shadow-xs ${
-                  isSimulating
-                    ? "bg-amber-500 hover:bg-amber-600 text-slate-950"
-                    : "bg-slate-900 hover:bg-slate-800 text-amber-300"
-                }`}
-              >
-                {isSimulating ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                <span>{isSimulating ? "Pausar Simulador" : "Simular Deslocamento"}</span>
-              </button>
-
-              {/* RESET POSITION */}
-              <button
-                onClick={handleResetPosition}
-                title="Repor posição inicial"
-                className="p-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl transition-all"
-              >
-                <RotateCcw className="w-4 h-4" />
-              </button>
+          {order.deliveryStatus === "Entregue" ? (
+            <div className="p-3.5 bg-slate-100 rounded-2xl border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-emerald-100 text-emerald-800 rounded-xl shrink-0">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div>
+                  <span className="font-extrabold text-slate-900 block">
+                    Entrega Concluída — GPS de Rota Desligado
+                  </span>
+                  <span className="text-[11px] text-slate-500">
+                    O rastreamento de localização desta encomenda foi desligado automaticamente. O transportador está livre para aceitar novas encomendas.
+                  </span>
+                </div>
+              </div>
+              <span className="px-3 py-1.5 bg-emerald-800 text-amber-300 font-extrabold rounded-xl text-[11px] shrink-0 border border-emerald-700">
+                🟢 Em Espera de Nova Carga
+              </span>
             </div>
-          </div>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
+                  <Compass className="w-4 h-4 text-emerald-700" />
+                  Painel de Controlo do GPS do Transportador:
+                </span>
 
-          <div className="grid grid-cols-3 gap-2 text-center text-xs bg-white p-3 rounded-2xl border border-slate-200">
-            <div>
-              <span className="text-[10px] text-slate-400 block font-bold">Velocidade Atual:</span>
-              <span className="font-black text-slate-900 text-sm">{speed} km/h</span>
-            </div>
-            <div>
-              <span className="text-[10px] text-slate-400 block font-bold">Distância em Falta:</span>
-              <span className="font-black text-emerald-800 text-sm">{distanceKm} km</span>
-            </div>
-            <div>
-              <span className="text-[10px] text-slate-400 block font-bold">Tempo Estimado:</span>
-              <span className="font-black text-amber-600 text-sm">~{etaMins} min</span>
-            </div>
-          </div>
+                <div className="flex items-center gap-2">
+                  {/* REAL DEVICE GPS BUTTON */}
+                  <button
+                    onClick={toggleLiveDeviceGps}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all shadow-xs ${
+                      isLiveGpsActive
+                        ? "bg-rose-600 hover:bg-rose-700 text-white animate-pulse"
+                        : "bg-emerald-800 hover:bg-emerald-900 text-white"
+                    }`}
+                  >
+                    <Smartphone className="w-3.5 h-3.5 text-amber-300" />
+                    <span>{isLiveGpsActive ? "Parar GPS Real" : "Ativar GPS do Dispositivo"}</span>
+                  </button>
+
+                  {/* SIMULATION TOGGLE */}
+                  <button
+                    onClick={toggleSimulation}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all shadow-xs ${
+                      isSimulating
+                        ? "bg-amber-500 hover:bg-amber-600 text-slate-950"
+                        : "bg-slate-900 hover:bg-slate-800 text-amber-300"
+                    }`}
+                  >
+                    {isSimulating ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                    <span>{isSimulating ? "Pausar Simulador" : "Simular Deslocamento"}</span>
+                  </button>
+
+                  {/* RESET POSITION */}
+                  <button
+                    onClick={handleResetPosition}
+                    title="Repor posição inicial"
+                    className="p-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl transition-all"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 text-center text-xs bg-white p-3 rounded-2xl border border-slate-200">
+                <div>
+                  <span className="text-[10px] text-slate-400 block font-bold">Velocidade Atual:</span>
+                  <span className="font-black text-slate-900 text-sm">{speed} km/h</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 block font-bold">Distância em Falta:</span>
+                  <span className="font-black text-emerald-800 text-sm">{distanceKm} km</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 block font-bold">Tempo Estimado:</span>
+                  <span className="font-black text-amber-600 text-sm">~{etaMins} min</span>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 

@@ -57,6 +57,7 @@ interface AgroContextType {
   // Wallet & Admin Actions
   approveFarmerFee: (farmerId: string) => void;
   rejectFarmerFee: (farmerId: string) => void;
+  verifyFarmerBiIdentity: (userId: string, approve: boolean, age?: number, reason?: string) => void;
   approveDriverAccount: (driverId: string) => void;
   withdrawWalletFunds: (amount: number, method: PaymentMethod, phoneNumber: string) => boolean;
   depositWalletFunds: (amount: number, method: PaymentMethod, phoneNumber: string, referenceNote?: string) => WalletTransaction;
@@ -379,21 +380,21 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let roleKey: "FARMER" | "BUYER" | "DRIVER" = "FARMER";
 
     if (targetRole === "AGRICULTOR") {
-      title = "📦 FCM Push: Novo Pedido de Tomates!";
-      message = "O comprador João comprou 5 caixas por 6.250 MT via M-Pesa. Prepare a carga em Marracuene.";
-      category = "PEDIDO";
+      title = "💸 M-Pesa: Novo Pagamento Entrou na Wallet!";
+      message = "Recebeu 6.250 MT via M-Pesa referente à venda de hortaliças na AgroMoz. Saldo creditado e disponível para levantamento!";
+      category = "PAGAMENTO";
       type = "ORDER";
       roleKey = "FARMER";
     } else if (targetRole === "COMPRADOR") {
-      title = "💰 FCM Push: Custódia M-Pesa Confirmada!";
-      message = "O pagamento do seu pedido #ord-9281 foi verificado com sucesso pelo sistema Escrow da AgroMoz.";
+      title = "💰 Custódia M-Pesa Confirmada!";
+      message = "O pagamento do seu pedido foi verificado com sucesso pelo sistema Escrow da AgroMoz.";
       category = "PAGAMENTO";
       type = "SYSTEM";
       roleKey = "BUYER";
     } else if (targetRole === "TRANSPORTADOR") {
-      title = "🚚 FCM Push: Nova Rota de Frete Disponível!";
-      message = "Carga de 20 caixas pronta para recolha na Machamba de Boane com destino ao Mercado Zimpeto.";
-      category = "PEDIDO";
+      title = "🚚 e-Mola: Frete Creditado na Wallet!";
+      message = "Pagamento de frete de transporte no valor de 150 MT via e-Mola foi creditado na sua Carteira AgroMoz!";
+      category = "PAGAMENTO";
       type = "ORDER";
       roleKey = "DRIVER";
     }
@@ -801,22 +802,39 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const createOrder = async (orderData: Partial<Order>): Promise<Order> => {
-    if (!currentUser) throw new Error("Apenas utilizadores autenticados podem efetuar compras.");
+    let buyer = currentUser;
+    if (!buyer) {
+      buyer = users.find((u) => u.role === "BUYER") || {
+        id: `user-buyer-${Date.now()}`,
+        name: orderData.buyerName || "Consumidor AgroMoz",
+        role: "BUYER",
+        phone: orderData.buyerPhone || "840000000",
+        province: orderData.buyerProvince || "Maputo Cidade",
+        district: orderData.buyerDistrict || "Kamphumo",
+        address: orderData.deliveryAddressReference || "Maputo",
+        online: true,
+        isApproved: true,
+      };
+      setCurrentUser(buyer);
+      if (!users.some((u) => u.id === buyer!.id)) {
+        setUsers((prev) => [...prev, buyer!]);
+      }
+    }
 
     const deliveryFee = 150; // MT
-    const subtotal = orderData.subtotal || orderData.totalAmount || ((orderData.quantity || 1) * 80);
+    const subtotal = orderData.subtotal || ((orderData.quantity || 1) * 80);
     const platformFee = Math.round(subtotal * 0.05); // AgroMoz 5% commission
     const farmerNetAmount = subtotal - platformFee; // Net amount released to farmer upon delivery
     const totalAmount = subtotal + deliveryFee;
 
     const newOrder: Order = {
       id: `ORD-${Date.now()}`,
-      buyerId: currentUser.id,
-      buyerName: currentUser.name,
-      buyerPhone: currentUser.phone,
-      buyerAddress: currentUser.address || `${currentUser.district}, ${currentUser.province}`,
-      buyerProvince: currentUser.province,
-      buyerDistrict: currentUser.district,
+      buyerId: buyer.id,
+      buyerName: buyer.name,
+      buyerPhone: orderData.buyerPhone || buyer.phone,
+      buyerAddress: orderData.deliveryAddressReference || buyer.address || `${buyer.district}, ${buyer.province}`,
+      buyerProvince: buyer.province,
+      buyerDistrict: buyer.district,
       buyerLocation: { lat: -25.9692, lng: 32.5732 },
       farmerId: orderData.farmerId || "",
       farmerName: orderData.farmerName || "Agricultor",
@@ -856,21 +874,23 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
       );
     }
 
-    // Add wallet record for buyer (Outgoing payment to AgroMoz Escrow)
-    const tx: WalletTransaction = {
-      id: `tx-${Date.now()}`,
-      userId: currentUser.id,
-      type: "SAÍDA",
-      title: `Pagamento em Custódia: ${newOrder.productName} (${newOrder.quantity} ${newOrder.unit})`,
-      amount: totalAmount,
-      feeAmount: platformFee,
-      escrowOrderId: newOrder.id,
-      method: newOrder.paymentMethod,
-      status: "Pendente",
-      reference: newOrder.paymentTxId || "",
-      timestamp: new Date().toISOString(),
-    };
-    setTransactions((prev) => [tx, ...prev]);
+    // Add wallet record only if user is not a BUYER
+    if (buyer.role !== "BUYER") {
+      const tx: WalletTransaction = {
+        id: `tx-${Date.now()}`,
+        userId: buyer.id,
+        type: "SAÍDA",
+        title: `Pagamento em Custódia: ${newOrder.productName} (${newOrder.quantity} ${newOrder.unit})`,
+        amount: totalAmount,
+        feeAmount: platformFee,
+        escrowOrderId: newOrder.id,
+        method: newOrder.paymentMethod,
+        status: "Pendente",
+        reference: newOrder.paymentTxId || "",
+        timestamp: new Date().toISOString(),
+      };
+      setTransactions((prev) => [tx, ...prev]);
+    }
 
     // Push Targeted FCM Notifications
     // 1. To Buyer
@@ -951,14 +971,43 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setTransactions((prev) => [farmerTx, ...prev]);
 
-      // Notify Farmer
+      // Notify Farmer via Wallet Toast
       pushNotification({
-        title: "💰 Dinheiro Libertado da Custódia!",
-        message: `${targetOrder.farmerNetAmount} MT creditados no seu Saldo Disponível (${targetOrder.productName}). Taxa AgroMoz 5%: ${targetOrder.platformFee} MT (${reason}).`,
+        title: `💸 M-Pesa / e-Mola: Pagamento Creditado na Wallet!`,
+        message: `${targetOrder.farmerNetAmount} MT via ${targetOrder.paymentMethod} foram creditados no seu Saldo Disponível (${targetOrder.productName}).`,
         type: "ORDER",
         category: "PAGAMENTO",
         targetRole: "FARMER",
         targetUserId: targetOrder.farmerId,
+        relatedId: targetOrder.id,
+      });
+    }
+
+    // Credit Driver's Available Wallet if assigned
+    if (targetOrder.driverId) {
+      const driverFee = targetOrder.deliveryFee || 150;
+      const driverTx: WalletTransaction = {
+        id: `tx-drv-${Date.now()}`,
+        userId: targetOrder.driverId,
+        type: "ENTRADA",
+        title: `Frete Concluído: Pedido #${targetOrder.id} (${targetOrder.productName})`,
+        amount: driverFee,
+        method: targetOrder.paymentMethod,
+        status: "Pago",
+        reference: targetOrder.paymentTxId || targetOrder.id,
+        timestamp: new Date().toISOString(),
+      };
+
+      setTransactions((prev) => [driverTx, ...prev]);
+
+      // Notify Driver via Wallet Toast
+      pushNotification({
+        title: `🚚 e-Mola / M-Pesa: Frete Creditado na Wallet!`,
+        message: `Recebeu ${driverFee} MT na sua Carteira AgroMoz via ${targetOrder.paymentMethod} pelo serviço de transporte do pedido #${targetOrder.id}.`,
+        type: "ORDER",
+        category: "PAGAMENTO",
+        targetRole: "DRIVER",
+        targetUserId: targetOrder.driverId,
         relatedId: targetOrder.id,
       });
     }
@@ -1191,6 +1240,65 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
     addNotification(`Taxa de adesão rejeitada/pendente.`);
   };
 
+  const verifyFarmerBiIdentity = (userId: string, approve: boolean, age?: number, reason?: string) => {
+    const identifiedAge = age || 25;
+    setUsers((prev) =>
+      prev.map((u) => {
+        if (u.id === userId) {
+          if (approve) {
+            return {
+              ...u,
+              isVerifiedFarmer: true,
+              verificationStatus: "Aprovado",
+              detectedAge: identifiedAge,
+              rejectionReason: undefined,
+            };
+          } else {
+            return {
+              ...u,
+              isVerifiedFarmer: false,
+              verificationStatus: "Recusado",
+              detectedAge: identifiedAge,
+              rejectionReason:
+                reason || `Conta Recusada: Menor de 18 anos (Idade B.I: ${identifiedAge} anos)`,
+            };
+          }
+        }
+        return u;
+      })
+    );
+
+    if (currentUser?.id === userId) {
+      setCurrentUser((prev) => {
+        if (!prev) return null;
+        if (approve) {
+          return {
+            ...prev,
+            isVerifiedFarmer: true,
+            verificationStatus: "Aprovado",
+            detectedAge: identifiedAge,
+            rejectionReason: undefined,
+          };
+        } else {
+          return {
+            ...prev,
+            isVerifiedFarmer: false,
+            verificationStatus: "Recusado",
+            detectedAge: identifiedAge,
+            rejectionReason:
+              reason || `Conta Recusada: Menor de 18 anos (Idade B.I: ${identifiedAge} anos)`,
+          };
+        }
+      });
+    }
+
+    if (approve) {
+      addNotification(`✅ B.I e Idade (${identifiedAge} anos) aprovados. Badge de Agricultor Verificado concedido.`);
+    } else {
+      addNotification(`❌ Verificação de B.I recusada para o utilizador.`);
+    }
+  };
+
   const approveDriverAccount = (driverId: string) => {
     setUsers((prev) =>
       prev.map((u) => (u.id === driverId ? { ...u, isApproved: true } : u))
@@ -1295,6 +1403,7 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
         sendMessage,
         approveFarmerFee,
         rejectFarmerFee,
+        verifyFarmerBiIdentity,
         approveDriverAccount,
         withdrawWalletFunds,
         depositWalletFunds,

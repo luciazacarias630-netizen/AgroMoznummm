@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   Smartphone,
   Maximize2,
+  Minimize2,
   Layers,
   Info,
   Radio,
@@ -114,6 +115,16 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     statusText: "Não Verificado",
     isBackgroundSupported: true,
   });
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+
+  const toggleFullscreen = () => {
+    setIsFullscreen((prev) => !prev);
+    setTimeout(() => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.invalidateSize();
+      }
+    }, 200);
+  };
 
   const simulationTimerRef = useRef<NodeJS.Timeout | null>(null);
   const gpsWatchRef = useRef<number | null>(null);
@@ -274,6 +285,22 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     setEtaMins(estTime);
   }, [driverPos, destPos, originPos, speed]);
 
+  // Stop GPS watch & simulation when delivery is completed
+  useEffect(() => {
+    if (currentOrder.deliveryStatus === "Entregue") {
+      setIsLiveGpsActive(false);
+      setIsSimulating(false);
+      if (gpsWatchRef.current !== null) {
+        navigator.geolocation.clearWatch(gpsWatchRef.current);
+        gpsWatchRef.current = null;
+      }
+      if (simulationTimerRef.current) {
+        clearInterval(simulationTimerRef.current);
+        simulationTimerRef.current = null;
+      }
+    }
+  }, [currentOrder.deliveryStatus]);
+
   // Simulation step
   useEffect(() => {
     if (!isSimulating || isLiveGpsActive) return;
@@ -390,33 +417,53 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           </div>
         </div>
 
-        {/* ORDER SELECTOR */}
-        {activeOrders.length > 0 && (
-          <div className="flex items-center gap-2 w-full md:w-auto">
-            <span className="text-xs text-slate-400 font-bold shrink-0">Encomenda:</span>
-            <select
-              value={currentOrder.id}
-              onChange={(e) => {
-                const sel = activeOrders.find((o) => o.id === e.target.value);
-                if (sel) setCurrentOrder(sel);
-              }}
-              className="bg-slate-800 text-amber-300 font-extrabold text-xs px-3 py-2 rounded-xl border border-slate-700 outline-none w-full md:w-64"
-            >
-              {activeOrders.map((o) => (
-                <option key={o.id} value={o.id}>
-                  #{o.id} - {o.productName} ({o.quantity} {o.unit})
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+        {/* ORDER SELECTOR & FULLSCREEN BUTTON */}
+        <div className="flex items-center gap-2 w-full md:w-auto flex-wrap">
+          {activeOrders.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400 font-bold shrink-0">Encomenda:</span>
+              <select
+                value={currentOrder.id}
+                onChange={(e) => {
+                  const sel = activeOrders.find((o) => o.id === e.target.value);
+                  if (sel) setCurrentOrder(sel);
+                }}
+                className="bg-slate-800 text-amber-300 font-extrabold text-xs px-3 py-2 rounded-xl border border-slate-700 outline-none w-full md:w-64"
+              >
+                {activeOrders.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    #{o.id} - {o.productName} ({o.quantity} {o.unit})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <button
+            onClick={toggleFullscreen}
+            className={`px-3.5 py-2 font-black rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer ${
+              isFullscreen
+                ? "bg-rose-600 hover:bg-rose-700 text-white"
+                : "bg-amber-400 hover:bg-amber-300 text-slate-950"
+            }`}
+          >
+            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            <span>{isFullscreen ? "Sair de Ecrã Inteiro" : "Ecrã Inteiro GPS"}</span>
+          </button>
+        </div>
       </div>
 
       {/* MAP CANVAS & CONTROLS CONTAINER */}
-      <div className="relative bg-slate-900 rounded-3xl overflow-hidden border border-slate-200 shadow-xl">
+      <div
+        className={
+          isFullscreen
+            ? "fixed inset-0 z-[99999] w-screen h-screen bg-slate-900 flex flex-col p-0 m-0 overflow-hidden text-slate-100 animate-fade-in"
+            : "relative bg-slate-900 rounded-3xl overflow-hidden border border-slate-200 shadow-xl"
+        }
+      >
         
         {/* LEAFLET/MAPLIBRE MAP MOUNT */}
-        <div ref={mapContainerRef} className="w-full h-[480px] z-0" />
+        <div ref={mapContainerRef} className={`w-full ${isFullscreen ? "flex-1 h-full min-h-[500px]" : "h-[480px]"} z-0`} />
 
         {/* MAP FLOATING CONTROLS (TOP RIGHT) */}
         <div className="absolute top-4 right-4 z-10 flex flex-col gap-2">
@@ -445,6 +492,15 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           >
             <Maximize2 className="w-4 h-4 text-slate-700" />
             <span className="hidden sm:inline">Ajustar Rota</span>
+          </button>
+
+          <button
+            onClick={toggleFullscreen}
+            className="p-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black rounded-2xl shadow-lg border border-amber-300 transition-all flex items-center gap-1.5 text-xs active:scale-95 cursor-pointer"
+            title={isFullscreen ? "Sair do Ecrã Inteiro" : "Ecrã Inteiro GPS"}
+          >
+            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            <span className="hidden sm:inline">{isFullscreen ? "Sair Fullscreen" : "Ecrã Inteiro"}</span>
           </button>
         </div>
 

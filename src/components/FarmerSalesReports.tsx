@@ -1,96 +1,160 @@
-import React, { useState } from "react";
-import {
-  ResponsiveContainer,
-  ComposedChart,
-  Bar,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-  CartesianGrid,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts";
+import React, { useState, useMemo } from "react";
 import {
   BarChart3,
-  TrendingUp,
   DollarSign,
   Package,
-  Calendar,
-  Filter,
   Download,
   Sprout,
-  ArrowUpRight,
-  PieChart as PieIcon,
   Award,
+  CheckCircle2,
+  Clock,
+  TrendingUp,
+  FileText,
+  FileSpreadsheet,
+  ChevronDown,
+  Printer,
+  Table,
 } from "lucide-react";
+import { Order, Product } from "../types";
+import { useAgro } from "../context/AgroContext";
+import { exportSalesToCSV, exportSalesToPDF } from "../utils/salesExport";
 
 interface SalesReportsProps {
-  farmerOrders?: any[];
-  farmerProducts?: any[];
+  farmerOrders?: Order[];
+  farmerProducts?: Product[];
 }
 
 export const FarmerSalesReports: React.FC<SalesReportsProps> = ({
   farmerOrders = [],
   farmerProducts = [],
 }) => {
+  const { currentUser } = useAgro();
   const [selectedPeriod, setSelectedPeriod] = useState<"6M" | "2026" | "EPOCA">("6M");
-  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>("ALL");
+  const [showExportOptions, setShowExportOptions] = useState(false);
+  const [showLedgerTable, setShowLedgerTable] = useState(true);
 
-  // Mock monthly performance data calibrated for Mozambican agricultural harvest cycles
-  const monthlyData = [
-    { mes: "Fev", receita: 24500, colheitaKg: 1200, encomendas: 14, produtoTop: "Tomate Rijo" },
-    { mes: "Mar", receita: 31000, colheitaKg: 1550, encomendas: 18, produtoTop: "Pimento Verde" },
-    { mes: "Abr", receita: 28400, colheitaKg: 1400, encomendas: 16, produtoTop: "Tomate Rijo" },
-    { mes: "Mai", receita: 42000, colheitaKg: 2100, encomendas: 25, produtoTop: "Mandioca Doce" },
-    { mes: "Jun", receita: 38500, colheitaKg: 1950, encomendas: 22, produtoTop: "Milho Amarelo" },
-    { mes: "Jul", receita: 54000, colheitaKg: 2700, encomendas: 31, produtoTop: "Batata-recheada" },
-  ];
+  // Period Label string
+  const periodLabel = useMemo(() => {
+    if (selectedPeriod === "6M") return "Últimos 6 Meses";
+    if (selectedPeriod === "2026") return "Ano de 2026";
+    return "Época Agrícola (12 Meses)";
+  }, [selectedPeriod]);
 
-  // Revenue breakdown by crop category
-  const categoryData = [
-    { name: "Hortaliças (Tomate, Pimento)", value: 45, color: "#166534" },
-    { name: "Tubérculos (Mandioca, Batata)", value: 25, color: "#ca8a04" },
-    { name: "Cereais (Milho, Feijão)", value: 20, color: "#2563eb" },
-    { name: "Frutas (Manga, Banana)", value: 10, color: "#ea580c" },
-  ];
+  // Filter valid non-cancelled orders based on selected time period
+  const validOrders = useMemo(() => {
+    const valid = farmerOrders.filter(
+      (o) => o.escrowStatus !== "Cancelado" && o.escrowStatus !== "Reembolsado"
+    );
 
-  // Total summary calculations
-  const totalPeriodRevenue = monthlyData.reduce((acc, curr) => acc + curr.receita, 0);
-  const totalPeriodKg = monthlyData.reduce((acc, curr) => acc + curr.colheitaKg, 0);
-  const totalPeriodOrders = monthlyData.reduce((acc, curr) => acc + curr.encomendas, 0);
-  const avgOrderValue = Math.round(totalPeriodRevenue / totalPeriodOrders);
+    const now = new Date();
+    return valid.filter((o) => {
+      if (!o.createdAt) return true;
+      const orderDate = new Date(o.createdAt);
+      if (selectedPeriod === "6M") {
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(now.getMonth() - 6);
+        return orderDate >= sixMonthsAgo;
+      } else if (selectedPeriod === "2026") {
+        return orderDate.getFullYear() === 2026;
+      } else if (selectedPeriod === "EPOCA") {
+        const oneYearAgo = new Date();
+        oneYearAgo.setFullYear(now.getFullYear() - 1);
+        return orderDate >= oneYearAgo;
+      }
+      return true;
+    });
+  }, [farmerOrders, selectedPeriod]);
 
-  // Custom Tooltip for ComposedChart
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-slate-900 text-white p-3 rounded-2xl shadow-xl border border-slate-700 text-xs space-y-1.5">
-          <p className="font-extrabold text-amber-400 border-b border-slate-700 pb-1">
-            Mês: {label} 2026
-          </p>
-          <p className="flex items-center justify-between gap-4">
-            <span className="text-slate-300">Receita Bruta:</span>
-            <span className="font-bold text-emerald-400 font-mono">
-              {payload[0]?.value?.toLocaleString()} MT
-            </span>
-          </p>
-          <p className="flex items-center justify-between gap-4">
-            <span className="text-slate-300">Volume Colhido:</span>
-            <span className="font-bold text-amber-300 font-mono">
-              {payload[1]?.value?.toLocaleString()} kg
-            </span>
-          </p>
-        </div>
-      );
+  // Real calculations derived from actual farmer orders
+  const totalRevenue = useMemo(() => {
+    return validOrders.reduce(
+      (acc, curr) => acc + (curr.subtotal || curr.totalAmount || 0),
+      0
+    );
+  }, [validOrders]);
+
+  const totalFarmerNetRevenue = useMemo(() => {
+    return validOrders.reduce(
+      (acc, curr) =>
+        acc +
+        (curr.farmerNetAmount ||
+          Math.round((curr.subtotal || curr.totalAmount || 0) * 0.95)),
+      0
+    );
+  }, [validOrders]);
+
+  const totalQuantity = useMemo(() => {
+    return validOrders.reduce((acc, curr) => acc + (curr.quantity || 0), 0);
+  }, [validOrders]);
+
+  const totalOrdersCount = validOrders.length;
+
+  const avgOrderValue = useMemo(() => {
+    return totalOrdersCount > 0 ? Math.round(totalRevenue / totalOrdersCount) : 0;
+  }, [totalRevenue, totalOrdersCount]);
+
+  const releasedOrdersCount = useMemo(() => {
+    return validOrders.filter((o) => o.escrowStatus === "Liberado").length;
+  }, [validOrders]);
+
+  const pendingOrdersCount = useMemo(() => {
+    return validOrders.filter((o) => o.escrowStatus === "Pendente").length;
+  }, [validOrders]);
+
+  // Determine top performing crop dynamically from real orders
+  const topCropInfo = useMemo(() => {
+    if (validOrders.length === 0) {
+      if (farmerProducts.length > 0) {
+        return {
+          name: farmerProducts[0].name,
+          subtext: "Produto ativo com maior stock",
+        };
+      }
+      return {
+        name: "Sem vendas registradas",
+        subtext: "Publique produtos para iniciar vendas",
+      };
     }
-    return null;
+
+    const revenueByProduct: Record<string, number> = {};
+
+    validOrders.forEach((o) => {
+      const name = o.productName || "Produto Agrícola";
+      const rev = o.subtotal || o.totalAmount || 0;
+      revenueByProduct[name] = (revenueByProduct[name] || 0) + rev;
+    });
+
+    let bestProduct = "";
+    let maxRevenue = 0;
+
+    Object.entries(revenueByProduct).forEach(([pName, rev]) => {
+      if (rev > maxRevenue) {
+        maxRevenue = rev;
+        bestProduct = pName;
+      }
+    });
+
+    const pct = totalRevenue > 0 ? Math.round((maxRevenue / totalRevenue) * 100) : 0;
+
+    return {
+      name: bestProduct || "Produto Agrícola",
+      subtext: `Rendimento: ~${pct}% do faturamento (${maxRevenue.toLocaleString()} MT)`,
+    };
+  }, [validOrders, totalRevenue, farmerProducts]);
+
+  const handleExportCSV = () => {
+    exportSalesToCSV(validOrders, currentUser?.name || "Agricultor AgroMoz", periodLabel);
+    setShowExportOptions(false);
   };
 
-  const handleExportReport = () => {
-    alert("Relatório de Vendas exportado com sucesso em formato PDF/CSV!");
+  const handleExportPDF = () => {
+    exportSalesToPDF(validOrders, currentUser, periodLabel, {
+      totalGross: totalRevenue,
+      totalNet: totalFarmerNetRevenue,
+      totalQty: totalQuantity,
+      count: totalOrdersCount,
+    });
+    setShowExportOptions(false);
   };
 
   return (
@@ -107,18 +171,18 @@ export const FarmerSalesReports: React.FC<SalesReportsProps> = ({
                 Relatórios de Vendas & Performance de Colheita
               </h2>
               <p className="text-xs text-slate-500">
-                Acompanhe a evolução de receita em Meticais (MT) e volume colhido por mês nas suas machambas.
+                Extratos financeiros e relatórios exportáveis para contabilidade agrícola.
               </p>
             </div>
           </div>
         </div>
 
-        {/* Period Selector & Export Button */}
+        {/* Period Selector & Export Buttons */}
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center bg-slate-100 p-1 rounded-2xl text-xs font-bold text-slate-700">
             <button
               onClick={() => setSelectedPeriod("6M")}
-              className={`px-3 py-1.5 rounded-xl transition-all ${
+              className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
                 selectedPeriod === "6M"
                   ? "bg-emerald-800 text-white shadow-xs"
                   : "hover:text-emerald-900"
@@ -128,7 +192,7 @@ export const FarmerSalesReports: React.FC<SalesReportsProps> = ({
             </button>
             <button
               onClick={() => setSelectedPeriod("2026")}
-              className={`px-3 py-1.5 rounded-xl transition-all ${
+              className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
                 selectedPeriod === "2026"
                   ? "bg-emerald-800 text-white shadow-xs"
                   : "hover:text-emerald-900"
@@ -138,7 +202,7 @@ export const FarmerSalesReports: React.FC<SalesReportsProps> = ({
             </button>
             <button
               onClick={() => setSelectedPeriod("EPOCA")}
-              className={`px-3 py-1.5 rounded-xl transition-all ${
+              className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
                 selectedPeriod === "EPOCA"
                   ? "bg-emerald-800 text-white shadow-xs"
                   : "hover:text-emerald-900"
@@ -148,13 +212,60 @@ export const FarmerSalesReports: React.FC<SalesReportsProps> = ({
             </button>
           </div>
 
-          <button
-            onClick={handleExportReport}
-            className="py-2 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 rounded-2xl text-xs font-bold flex items-center gap-1.5 transition-all"
-          >
-            <Download className="w-4 h-4 text-emerald-700" />
-            Exportar
-          </button>
+          {/* EXPORT DROPDOWN MENU */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowExportOptions(!showExportOptions)}
+              className="py-2 px-3.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-2xl text-xs font-extrabold flex items-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer"
+            >
+              <Download className="w-4 h-4 text-amber-300" />
+              <span>Exportar Vendas</span>
+              <ChevronDown className="w-3.5 h-3.5" />
+            </button>
+
+            {showExportOptions && (
+              <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-emerald-200 p-2 z-30 space-y-1 animate-in fade-in slide-in-from-top-2 duration-150">
+                <div className="px-3 py-1.5 border-b border-slate-100 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
+                  Escolha o formato de contabilidade
+                </div>
+
+                <button
+                  onClick={handleExportPDF}
+                  className="w-full text-left p-2.5 rounded-xl hover:bg-emerald-50 transition-all flex items-center gap-3 group cursor-pointer"
+                >
+                  <div className="p-2 bg-red-100 text-red-700 rounded-xl group-hover:scale-105 transition-transform">
+                    <FileText className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="block text-xs font-bold text-slate-900">
+                      Relatório em PDF (Imprimir)
+                    </span>
+                    <span className="block text-[10px] text-slate-500">
+                      Documento oficial com cabeçalho AgroMoz e selo
+                    </span>
+                  </div>
+                </button>
+
+                <button
+                  onClick={handleExportCSV}
+                  className="w-full text-left p-2.5 rounded-xl hover:bg-emerald-50 transition-all flex items-center gap-3 group cursor-pointer"
+                >
+                  <div className="p-2 bg-emerald-100 text-emerald-800 rounded-xl group-hover:scale-105 transition-transform">
+                    <FileSpreadsheet className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="block text-xs font-bold text-slate-900">
+                      Ficheiro CSV (Excel / Contabilidade)
+                    </span>
+                    <span className="block text-[10px] text-slate-500">
+                      Dados tabulares separados por ponto e vírgula
+                    </span>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -163,21 +274,23 @@ export const FarmerSalesReports: React.FC<SalesReportsProps> = ({
         {/* Total Revenue */}
         <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-800 to-emerald-950 text-white shadow-md relative overflow-hidden">
           <div className="flex justify-between items-start mb-2">
-            <span className="text-xs text-emerald-200 font-bold">Faturação Total no Período</span>
+            <span className="text-xs text-emerald-200 font-bold">Faturação Total (Bruta)</span>
             <div className="p-1.5 bg-emerald-700/60 rounded-xl text-amber-300">
               <DollarSign className="w-4 h-4" />
             </div>
           </div>
           <div className="text-2xl font-black font-mono text-amber-300">
-            {totalPeriodRevenue.toLocaleString()} MT
+            {totalRevenue.toLocaleString()} MT
           </div>
-          <div className="mt-2 flex items-center gap-1 text-[11px] text-emerald-200 font-medium">
-            <ArrowUpRight className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-amber-300 font-bold">+18.4%</span> comparado ao mês anterior
+          <div className="mt-2 flex items-center justify-between text-[11px] text-emerald-200 font-medium border-t border-emerald-700/50 pt-1.5">
+            <span>Líquido a receber:</span>
+            <span className="font-bold text-amber-300 font-mono">
+              {totalFarmerNetRevenue.toLocaleString()} MT
+            </span>
           </div>
         </div>
 
-        {/* Total Volume Harvested */}
+        {/* Total Volume Harvested/Sold */}
         <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-slate-900 shadow-xs">
           <div className="flex justify-between items-start mb-2">
             <span className="text-xs font-bold text-amber-900">Total Colhido / Vendido</span>
@@ -186,10 +299,12 @@ export const FarmerSalesReports: React.FC<SalesReportsProps> = ({
             </div>
           </div>
           <div className="text-2xl font-black font-mono text-slate-900">
-            {totalPeriodKg.toLocaleString()} <span className="text-sm font-sans font-bold text-amber-800">kg</span>
+            {totalQuantity.toLocaleString()}{" "}
+            <span className="text-sm font-sans font-bold text-amber-800">unidades/kg</span>
           </div>
-          <p className="mt-2 text-[11px] text-slate-600 font-medium">
-            Média de <strong>{Math.round(totalPeriodKg / monthlyData.length)} kg</strong> por mês
+          <p className="mt-2 text-[11px] text-slate-600 font-medium flex items-center gap-1">
+            <TrendingUp className="w-3.5 h-3.5 text-emerald-700" />
+            Registado em <strong>{totalOrdersCount}</strong> encomendas
           </p>
         </div>
 
@@ -204,9 +319,14 @@ export const FarmerSalesReports: React.FC<SalesReportsProps> = ({
           <div className="text-2xl font-black font-mono text-emerald-900">
             {avgOrderValue.toLocaleString()} MT
           </div>
-          <p className="mt-2 text-[11px] text-slate-500 font-medium">
-            Baseado em <strong>{totalPeriodOrders}</strong> encomendas concluídas
-          </p>
+          <div className="mt-2 flex items-center gap-3 text-[11px] text-slate-500 font-medium">
+            <span className="flex items-center gap-1 text-emerald-700">
+              <CheckCircle2 className="w-3 h-3" /> {releasedOrdersCount} Liberadas
+            </span>
+            <span className="flex items-center gap-1 text-amber-700">
+              <Clock className="w-3 h-3" /> {pendingOrdersCount} Retidas
+            </span>
+          </div>
         </div>
 
         {/* Top Performing Crop */}
@@ -217,139 +337,108 @@ export const FarmerSalesReports: React.FC<SalesReportsProps> = ({
               <Award className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-lg font-black text-slate-900 truncate">
-            Tomate Rijo de Machamba
+          <div className="text-lg font-black text-slate-900 truncate" title={topCropInfo.name}>
+            {topCropInfo.name}
           </div>
-          <p className="mt-1 text-[11px] text-emerald-800 font-bold">
-            Rendimento: ~45% do volume total
+          <p className="mt-1 text-[11px] text-emerald-800 font-bold truncate">
+            {topCropInfo.subtext}
           </p>
         </div>
       </div>
 
-      {/* CHARTS CONTAINER */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-2">
-        {/* MAIN BAR / LINE COMBINED CHART (2 COLUMNS) */}
-        <div className="lg:col-span-2 bg-slate-50 p-5 rounded-3xl border border-slate-200 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wide">
-                Evolução Mensal: Receita (MT) & Volume (Kg)
-              </h3>
-              <p className="text-[11px] text-slate-500">
-                Barras verdes indicam faturamento | Linha dourada indica volume de colheita em kg
-              </p>
-            </div>
-            <div className="flex items-center gap-3 text-[11px] font-bold">
-              <span className="flex items-center gap-1.5 text-emerald-800">
-                <span className="w-3 h-3 bg-emerald-700 rounded-sm inline-block" /> Receita (MT)
-              </span>
-              <span className="flex items-center gap-1.5 text-amber-700">
-                <span className="w-3 h-3 bg-amber-500 rounded-full inline-block" /> Colheita (kg)
-              </span>
-            </div>
-          </div>
+      {/* ACCOUNTING LEDGER PREVIEW TABLE */}
+      <div className="pt-2 border-t border-slate-100 space-y-3">
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setShowLedgerTable(!showLedgerTable)}
+            className="flex items-center gap-2 text-xs font-extrabold text-slate-800 hover:text-emerald-800 cursor-pointer"
+          >
+            <Table className="w-4 h-4 text-emerald-700" />
+            <span>Extrato de Vendas para Contabilidade ({validOrders.length} Lançamentos)</span>
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showLedgerTable ? "rotate-180" : ""}`} />
+          </button>
 
-          <div className="h-64 w-full pt-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart
-                data={monthlyData}
-                margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="mes" tick={{ fontSize: 11, fill: "#475569" }} />
-                <YAxis
-                  yAxisId="left"
-                  tick={{ fontSize: 10, fill: "#166534" }}
-                  tickFormatter={(val) => `${val / 1000}k MT`}
-                />
-                <YAxis
-                  yAxisId="right"
-                  orientation="right"
-                  tick={{ fontSize: 10, fill: "#b45309" }}
-                  tickFormatter={(val) => `${val}kg`}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar
-                  yAxisId="left"
-                  dataKey="receita"
-                  name="Receita (MT)"
-                  fill="#15803d"
-                  radius={[8, 8, 0, 0]}
-                  barSize={32}
-                />
-                <Line
-                  yAxisId="right"
-                  type="monotone"
-                  dataKey="colheitaKg"
-                  name="Volume (kg)"
-                  stroke="#d97706"
-                  strokeWidth={3}
-                  dot={{ r: 5, fill: "#f59e0b", strokeWidth: 2, stroke: "#ffffff" }}
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleExportPDF}
+              className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 rounded-xl text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5 text-red-700" />
+              <span>Baixar PDF</span>
+            </button>
+            <button
+              onClick={handleExportCSV}
+              className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
+              <span>Baixar CSV</span>
+            </button>
           </div>
         </div>
 
-        {/* PIE CHART FOR REVENUE DISTRIBUTION BY CROP CATEGORY */}
-        <div className="bg-slate-50 p-5 rounded-3xl border border-slate-200 flex flex-col justify-between space-y-3">
-          <div>
-            <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wide flex items-center gap-1.5">
-              <PieIcon className="w-4 h-4 text-emerald-800" />
-              Distribuição por Tipo de Cultura
-            </h3>
-            <p className="text-[11px] text-slate-500">
-              Percentual das vendas agrupado por categoria agrícola.
-            </p>
-          </div>
-
-          <div className="h-44 w-full my-auto flex items-center justify-center">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={categoryData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={42}
-                  outerRadius={68}
-                  paddingAngle={4}
-                  dataKey="value"
-                >
-                  {categoryData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  formatter={(val: any) => [`${val}%`, "Quota de Vendas"]}
-                  contentStyle={{
-                    backgroundColor: "#0f172a",
-                    borderColor: "#334155",
-                    borderRadius: "12px",
-                    color: "#ffffff",
-                    fontSize: "12px",
-                  }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* LEGEND */}
-          <div className="space-y-1.5 text-[11px] border-t border-slate-200 pt-3">
-            {categoryData.map((item) => (
-              <div key={item.name} className="flex items-center justify-between">
-                <div className="flex items-center gap-2 truncate">
-                  <span
-                    className="w-2.5 h-2.5 rounded-full shrink-0"
-                    style={{ backgroundColor: item.color }}
-                  />
-                  <span className="text-slate-700 font-medium truncate">{item.name}</span>
-                </div>
-                <span className="font-extrabold text-slate-900 font-mono">{item.value}%</span>
+        {showLedgerTable && (
+          <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-slate-50/50">
+            {validOrders.length === 0 ? (
+              <div className="p-6 text-center text-xs text-slate-500">
+                Nenhum registo de venda encontrado para o período selecionado.
               </div>
-            ))}
+            ) : (
+              <table className="w-full text-left text-xs text-slate-700 border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-100 text-[10px] text-slate-600 font-extrabold uppercase">
+                    <th className="py-2.5 px-3">Data</th>
+                    <th className="py-2.5 px-3">Nº Pedido</th>
+                    <th className="py-2.5 px-3">Produto</th>
+                    <th className="py-2.5 px-3">Qtd</th>
+                    <th className="py-2.5 px-3">Faturação Bruta</th>
+                    <th className="py-2.5 px-3 text-amber-800">Taxa 5%</th>
+                    <th className="py-2.5 px-3 text-emerald-800">Líquido</th>
+                    <th className="py-2.5 px-3">Estado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 bg-white">
+                  {validOrders.map((ord) => {
+                    const gross = ord.subtotal || ord.totalAmount || 0;
+                    const fee = ord.platformFee || Math.round(gross * 0.05);
+                    const net = ord.farmerNetAmount || gross - fee;
+                    return (
+                      <tr key={ord.id} className="hover:bg-emerald-50/40 transition-colors">
+                        <td className="py-2 px-3 text-[11px] text-slate-500 font-medium">
+                          {ord.createdAt ? new Date(ord.createdAt).toLocaleDateString("pt-MZ") : "N/A"}
+                        </td>
+                        <td className="py-2 px-3 font-mono font-bold text-slate-900 text-[11px]">
+                          #{ord.id.slice(-6)}
+                        </td>
+                        <td className="py-2 px-3 font-bold text-slate-900">{ord.productName}</td>
+                        <td className="py-2 px-3 text-slate-600">
+                          {ord.quantity} {ord.unit}
+                        </td>
+                        <td className="py-2 px-3 font-mono font-bold text-slate-900">{gross} MT</td>
+                        <td className="py-2 px-3 font-mono text-amber-700 font-medium">-{fee} MT</td>
+                        <td className="py-2 px-3 font-mono font-black text-emerald-800">{net} MT</td>
+                        <td className="py-2 px-3">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[9.5px] font-extrabold ${
+                              ord.escrowStatus === "Liberado"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-amber-100 text-amber-800"
+                            }`}
+                          >
+                            {ord.escrowStatus}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
 };
+
+

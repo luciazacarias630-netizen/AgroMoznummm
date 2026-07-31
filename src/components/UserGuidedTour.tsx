@@ -16,6 +16,7 @@ import {
   HelpCircle,
   ShieldCheck,
   TrendingUp,
+  Smartphone,
 } from "lucide-react";
 
 interface TourStep {
@@ -152,7 +153,7 @@ export const UserGuidedTour: React.FC<UserGuidedTourProps> = ({
           {
             title: "Pagamento com M-Pesa / E-Mola 📱",
             description: "Pague com segurança utilizando carteiras móveis nacionais. O valor fica seguro até a confirmação do pedido.",
-            icon: <Wallet className="w-8 h-8 text-emerald-700" />,
+            icon: <Smartphone className="w-8 h-8 text-emerald-700" />,
             badge: "Passo 3: Pagamento Facilitado",
             tip: "Suporta M-Pesa, E-Mola e Conta Móvel Millenium BIM.",
           },

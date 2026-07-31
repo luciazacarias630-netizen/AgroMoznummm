@@ -1,8 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { useAgro } from "../context/AgroContext";
 import { MOZAMBIQUE_PROVINCES, PRODUCT_CATEGORIES } from "../data/mozambiqueLocations";
 import { Product, StockStatus } from "../types";
 import { FarmerSalesReports } from "./FarmerSalesReports";
+import { exportSalesToCSV, exportSalesToPDF } from "../utils/salesExport";
+import { VerifiedFarmerBadge } from "./VerifiedFarmerBadge";
+import { FarmerVerificationModal } from "./FarmerVerificationModal";
 import {
   findMatchingCropByText,
   simulateAICropScan,
@@ -37,6 +40,12 @@ import {
   Scan,
   Check,
   Image as ImageIcon,
+  BellRing,
+  ArrowLeft,
+  Upload,
+  RefreshCw,
+  Loader2,
+  BadgeCheck,
 } from "lucide-react";
 
 export const FarmerDashboard: React.FC = () => {
@@ -47,14 +56,17 @@ export const FarmerDashboard: React.FC = () => {
     updateProduct,
     deleteProduct,
     orders,
+    updateOrderStatus,
     machambas,
     addMachamba,
     receiverPhone,
     transactions,
+    testFcmPushNotification,
   } = useAgro();
 
   const [showAddProdModal, setShowAddProdModal] = useState(false);
   const [showAddMachambaModal, setShowAddMachambaModal] = useState(false);
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
 
   // New Product form state
   const [prodName, setProdName] = useState("");
@@ -67,6 +79,128 @@ export const FarmerDashboard: React.FC = () => {
     "https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&q=80&w=600"
   );
   const [termsAccepted, setTermsAccepted] = useState(false);
+
+  // Crop Photo Catalog State
+  const [cropCatFilter, setCropCatFilter] = useState<string>("TODOS");
+  const [cropPhotoSearch, setCropPhotoSearch] = useState<string>("");
+
+  const filteredCropPhotos = CROP_DATABASE.filter((crop) => {
+    const matchesCat = cropCatFilter === "TODOS" || crop.category === cropCatFilter;
+    const matchesSearch =
+      !cropPhotoSearch ||
+      crop.name.toLowerCase().includes(cropPhotoSearch.toLowerCase()) ||
+      crop.keywords.some((kw) => kw.toLowerCase().includes(cropPhotoSearch.toLowerCase()));
+    return matchesCat && matchesSearch;
+  });
+
+  // Live Mobile Camera Capture State & Refs
+  const [isCameraLive, setIsCameraLive] = useState(false);
+  const [cameraFacing, setCameraFacing] = useState<"environment" | "user">("environment");
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [isCameraLoading, setIsCameraLoading] = useState(false);
+
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Request camera permission and initialize WebRTC stream
+  const handleStartLiveCamera = async (facing: "environment" | "user" = cameraFacing) => {
+    setCameraError(null);
+    setIsCameraLoading(true);
+    setIsCameraLive(true);
+
+    // Stop previous video stream if active
+    if (videoRef.current && videoRef.current.srcObject) {
+      const currentStream = videoRef.current.srcObject as MediaStream;
+      currentStream.getTracks().forEach((track) => track.stop());
+    }
+
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("O seu navegador não suporta captura direta de câmara.");
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: facing,
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      });
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      setIsCameraLoading(false);
+    } catch (err: any) {
+      console.error("Erro ao solicitar acesso à câmara:", err);
+      setIsCameraLoading(false);
+      let msg = "Não foi possível aceder à câmara do dispositivo.";
+      if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+        msg = "Permissão de câmara negada! A AgroMoz precisa de permissão de acesso à câmara para fotografar o seu produto. Por favor, permita o acesso na mensagem do navegador ou selecione uma foto da galeria.";
+      } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+        msg = "Nenhuma câmara foi detetada. Pode escolher uma fotografia a partir do telemóvel ou galeria.";
+      } else {
+        msg = err.message || msg;
+      }
+      setCameraError(msg);
+    }
+  };
+
+  const handleStopLiveCamera = () => {
+    if (videoRef.current && videoRef.current.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach((track) => track.stop());
+      videoRef.current.srcObject = null;
+    }
+    setIsCameraLive(false);
+    setCameraError(null);
+  };
+
+  const handleCaptureCameraPhoto = () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+
+    const canvas = canvasRef.current || document.createElement("canvas");
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.88);
+      setProdImgUrl(dataUrl);
+
+      handleStopLiveCamera();
+
+      if (!prodName) {
+        setProdName("Produto Agrícola Fotografado");
+      }
+      setAiMatchedCropName("Foto Capturada via Câmara");
+    }
+  };
+
+  const handleToggleCameraFacing = () => {
+    const nextFacing = cameraFacing === "environment" ? "user" : "environment";
+    setCameraFacing(nextFacing);
+    handleStartLiveCamera(nextFacing);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === "string") {
+          setProdImgUrl(reader.result);
+          setAiMatchedCropName("Fotografia da Galeria");
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   // AI Product Scanner & Auto-Detection state
   const [isScanning, setIsScanning] = useState(false);
@@ -219,11 +353,17 @@ export const FarmerDashboard: React.FC = () => {
             className="w-16 h-16 rounded-2xl object-cover border-2 border-emerald-600 shadow-md"
           />
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl font-bold text-slate-900">{currentUser?.name}</h1>
-              <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 font-bold rounded-full text-[10px]">
-                🌾 Agricultor Registado
-              </span>
+              {currentUser?.isVerifiedFarmer ? (
+                <VerifiedFarmerBadge isVerified={true} status="Aprovado" size="md" />
+              ) : currentUser?.verificationStatus === "Recusado" ? (
+                <VerifiedFarmerBadge isVerified={false} status="Recusado" showIfNotVerified={true} size="md" />
+              ) : (
+                <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 font-bold rounded-full text-[10px]">
+                  🌾 Agricultor Registado
+                </span>
+              )}
             </div>
             <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
               <MapPin className="w-3.5 h-3.5 text-amber-600" />
@@ -234,6 +374,17 @@ export const FarmerDashboard: React.FC = () => {
 
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+          {currentUser?.role !== "ADMIN" && !currentUser?.isVerifiedFarmer && (
+            <button
+              onClick={() => setShowVerificationModal(true)}
+              className="flex-1 md:flex-initial py-2.5 px-3.5 bg-amber-400 hover:bg-amber-500 text-slate-950 font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
+              title="Validar B.I Frente e Verso para obter o Badge de Verificado (18+)"
+            >
+              <BadgeCheck className="w-4 h-4 text-emerald-950" />
+              <span>Validar B.I (18+)</span>
+            </button>
+          )}
+
           <button
             onClick={() => setShowAddMachambaModal(true)}
             className="flex-1 md:flex-initial py-2.5 px-4 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all"
@@ -264,9 +415,19 @@ export const FarmerDashboard: React.FC = () => {
           <div className="text-2xl font-extrabold font-serif text-amber-300">
             {availableBalance.toLocaleString()} MT
           </div>
-          <span className="text-[10px] text-emerald-200 font-medium block mt-1">
-            Pronto para levantamento
-          </span>
+          <div className="flex items-center justify-between items-start">
+            <span className="text-[10px] text-emerald-200 font-medium block mt-1">
+              Pronto para levantamento
+            </span>
+            <button
+              onClick={() => testFcmPushNotification("AGRICULTOR")}
+              className="mt-1 text-[10px] font-extrabold text-amber-300 hover:text-white bg-emerald-700/60 hover:bg-emerald-700 px-2 py-0.5 rounded-lg flex items-center gap-1 transition-all active:scale-95"
+              title="Testar Notificação Toast M-Pesa"
+            >
+              <BellRing className="w-3 h-3 text-amber-300 animate-pulse" />
+              <span>Testar Toast</span>
+            </button>
+          </div>
         </div>
 
         <div className="bg-amber-500/10 border-2 border-amber-400/50 p-5 rounded-3xl shadow-xs">
@@ -330,11 +491,23 @@ export const FarmerDashboard: React.FC = () => {
             </p>
           </div>
 
-          <div className="p-2.5 bg-emerald-50 rounded-2xl border border-emerald-200 text-[11px] text-emerald-900 flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-emerald-700 shrink-0" />
-            <span>
-              <strong>Garantia AgroMoz:</strong> O valor do comprador fica protegido em custódia até à entrega.
-            </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => exportSalesToPDF(farmerOrders, currentUser, "Histórico Completo")}
+              disabled={farmerOrders.length === 0}
+              className="px-3 py-1.5 bg-red-50 hover:bg-red-100 disabled:opacity-50 text-red-800 border border-red-200 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+            >
+              <span>📄 Baixar PDF</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => exportSalesToCSV(farmerOrders, currentUser?.name, "Histórico Completo")}
+              disabled={farmerOrders.length === 0}
+              className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 text-emerald-900 border border-emerald-200 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+            >
+              <span>📊 Baixar CSV (Excel)</span>
+            </button>
           </div>
         </div>
 
@@ -354,6 +527,7 @@ export const FarmerDashboard: React.FC = () => {
                   <th className="py-3 px-3 text-amber-700">Taxa AgroMoz (5%)</th>
                   <th className="py-3 px-3 text-emerald-800">Líquido a Receber</th>
                   <th className="py-3 px-3">Estado Custódia</th>
+                  <th className="py-3 px-3">Estado do Pedido & Ação</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -408,6 +582,30 @@ export const FarmerDashboard: React.FC = () => {
                             </>
                           )}
                         </span>
+                      </td>
+                      <td className="py-3 px-3">
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold ${
+                            o.deliveryStatus === "Entregue"
+                              ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
+                              : o.deliveryStatus === "Em Trânsito"
+                              ? "bg-amber-300 text-amber-950 font-black animate-pulse"
+                              : "bg-slate-100 text-slate-800 border border-slate-200"
+                          }`}>
+                            {o.deliveryStatus}
+                          </span>
+
+                          {o.deliveryStatus === "Pedido recebido" && (
+                            <button
+                              onClick={() => updateOrderStatus(o.id, "Aceite pelo Agricultor")}
+                              className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-[11px] font-extrabold flex items-center gap-1 shadow-xs active:scale-95 transition-all cursor-pointer"
+                              title="Confirmar disponibilidade e aceitar este pedido"
+                            >
+                              <CheckCircle2 className="w-3 h-3 text-amber-300" />
+                              Aceitar Pedido
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -507,83 +705,306 @@ export const FarmerDashboard: React.FC = () => {
       {/* 4. MODAL TO ADD PRODUCT */}
       {showAddProdModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white max-w-md w-full rounded-3xl p-6 shadow-2xl border border-emerald-100 my-8">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
-              <h3 className="font-bold text-slate-900 text-base">Publicar Novo Produto Agrícola</h3>
-              <button onClick={() => setShowAddProdModal(false)} className="text-slate-400 hover:text-slate-600">
+          <div className="bg-white max-w-md w-full rounded-3xl p-6 shadow-2xl border border-emerald-100 my-8 space-y-4">
+            
+            {/* MODAL HEADER WITH VOLTAR BUTTON */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleStopLiveCamera();
+                    setShowAddProdModal(false);
+                  }}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                  title="Voltar ao Painel"
+                >
+                  <ArrowLeft className="w-4 h-4 text-slate-600" />
+                  <span>Voltar</span>
+                </button>
+                <h3 className="font-extrabold text-slate-900 text-base">Publicar Novo Produto</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  handleStopLiveCamera();
+                  setShowAddProdModal(false);
+                }}
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
+                title="Fechar"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleCreateProduct} className="space-y-3.5 text-xs">
-              {/* AI CAMERA SCANNER BANNER BUTTON */}
-              <div className="p-3 bg-emerald-950 text-white rounded-2xl border border-emerald-700/80 space-y-2">
+              
+              {/* CAMERA PHOTO CAPTURE & GALLERY BANNER */}
+              <div className="p-3.5 bg-slate-900 text-white rounded-2xl border border-emerald-500/40 space-y-3 shadow-md">
                 <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 font-bold text-emerald-300 text-[11px]">
-                    <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
-                    Digitalização & Reconhecimento de Imagem IA
+                  <span className="flex items-center gap-1.5 font-extrabold text-emerald-300 text-xs">
+                    <Camera className="w-4 h-4 text-amber-400" />
+                    Fotografar Produto com a Câmara
                   </span>
-                  <span className="text-[9px] bg-emerald-800 text-emerald-200 px-2 py-0.5 rounded-full font-mono">
-                    AgroMoz Vision AI
+                  <span className="text-[9px] bg-emerald-800 text-emerald-200 px-2 py-0.5 rounded-full font-bold">
+                    Câmara do Telemóvel
                   </span>
                 </div>
-                <p className="text-[10.5px] text-slate-300">
-                  Fotografe ou digite o nome do produto. A IA identifica a cultura agrícola e seleciona a imagem HD correspondente!
+
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  Tire uma fotografia em direto do seu produto ou carregue um ficheiro da galeria. A AgroMoz solicita permissão para aceder à câmara do seu dispositivo.
                 </p>
 
-                <div className="flex gap-2 pt-1">
+                {/* Camera Buttons */}
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleStartLiveCamera("environment")}
+                    className="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl text-[11px] transition-all flex items-center justify-center gap-1.5 shadow-md active:scale-95 cursor-pointer"
+                  >
+                    <Camera className="w-4 h-4 text-amber-300" />
+                    <span>Tirar Foto (Câmara)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-amber-300 font-extrabold rounded-xl text-[11px] transition-all flex items-center justify-center gap-1.5 border border-amber-400/30 active:scale-95 cursor-pointer"
+                  >
+                    <Upload className="w-4 h-4" />
+                    <span>Escolher da Galeria</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between pt-1 border-t border-slate-800/80 text-[10px] text-slate-400">
+                  <span>Ou use a IA AgroMoz Vision:</span>
                   <button
                     type="button"
                     onClick={() => {
                       setShowScannerModal(true);
                       handleRunAIScan(prodName);
                     }}
-                    className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-[11px] transition-all flex items-center justify-center gap-1.5 shadow-md"
+                    className="text-amber-300 font-bold hover:underline flex items-center gap-1"
                   >
-                    <Camera className="w-3.5 h-3.5 text-amber-300" />
-                    <span>Escanear com Câmara / IA</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleRunAIScan(prodName)}
-                    className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold rounded-xl text-[11px] transition-all flex items-center gap-1 border border-amber-400/30"
-                  >
-                    <Scan className="w-3.5 h-3.5" />
-                    <span>Scan Rápido</span>
+                    <Sparkles className="w-3 h-3 text-amber-400" />
+                    Scanner IA de Colheita
                   </button>
                 </div>
+
+                {/* Hidden native file/camera input */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
               </div>
 
-              {/* QUICK CROP CHIPS PRESETS */}
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
-                  <span>Seleção Rápida de Culturas (IA):</span>
-                  <span className="text-[10px] text-emerald-700 font-medium">Clique para aplicar foto e dados</span>
-                </label>
-                <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-                  {CROP_DATABASE.slice(0, 8).map((crop) => (
+              {/* LIVE CAMERA VIEWFINDER & PERMISSION CONTAINER */}
+              {isCameraLive && (
+                <div className="p-4 bg-slate-950 text-white rounded-2xl border-2 border-emerald-500 space-y-3 relative overflow-hidden shadow-2xl animate-in fade-in zoom-in-95">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                    <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+                      Câmara em Direto
+                    </span>
                     <button
-                      key={crop.name}
                       type="button"
-                      onClick={() => {
-                        setProdName(crop.name);
-                        setProdCategory(crop.category);
-                        setProdImgUrl(crop.imageUrl);
-                        setProdUnit(crop.defaultUnit);
-                        setProdPrice(crop.suggestedPrice);
-                        setAiMatchedCropName(crop.name);
-                      }}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10.5px] font-semibold border transition-all shrink-0 ${
-                        prodImgUrl === crop.imageUrl
-                          ? "bg-emerald-100 text-emerald-900 border-emerald-500 ring-2 ring-emerald-400/40"
-                          : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
-                      }`}
+                      onClick={handleStopLiveCamera}
+                      className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[10.5px] font-bold flex items-center gap-1 cursor-pointer"
                     >
-                      <img src={crop.imageUrl} alt={crop.name} className="w-4 h-4 rounded-full object-cover shrink-0" />
-                      <span>{crop.name.split(" ")[0]}</span>
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      <span>Voltar ao Cadastro</span>
                     </button>
-                  ))}
+                  </div>
+
+                  {cameraError ? (
+                    <div className="p-4 bg-red-950/90 border border-red-500/50 rounded-xl space-y-3 text-center">
+                      <ShieldAlert className="w-8 h-8 text-red-400 mx-auto" />
+                      <p className="text-xs text-red-200 font-semibold leading-relaxed">
+                        {cameraError}
+                      </p>
+                      <div className="flex gap-2 pt-1 justify-center">
+                        <button
+                          type="button"
+                          onClick={() => handleStartLiveCamera()}
+                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg cursor-pointer"
+                        >
+                          Tentar Novamente
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleStopLiveCamera();
+                            fileInputRef.current?.click();
+                          }}
+                          className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-bold rounded-lg cursor-pointer"
+                        >
+                          Usar Galeria / Ficheiro
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="relative aspect-4/3 w-full bg-black rounded-xl overflow-hidden border border-emerald-500/50 flex items-center justify-center">
+                        {isCameraLoading && (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 text-xs text-emerald-400 space-y-2 z-10">
+                            <Loader2 className="w-6 h-6 animate-spin text-amber-400" />
+                            <span>Solicitando permissão de câmara...</span>
+                          </div>
+                        )}
+                        <video
+                          ref={videoRef}
+                          playsInline
+                          muted
+                          className="w-full h-full object-cover"
+                        />
+                        {/* Camera viewfinder frame */}
+                        <div className="absolute inset-4 border-2 border-dashed border-emerald-400/70 rounded-xl pointer-events-none flex flex-col justify-between p-2">
+                          <span className="text-[9px] font-mono text-emerald-300 bg-slate-950/80 px-2 py-0.5 rounded self-start">
+                            ENQUADRE O PRODUTO
+                          </span>
+                          <span className="text-[9px] font-mono text-amber-300 bg-slate-950/80 px-2 py-0.5 rounded self-end">
+                            AGROMOZ CAMERA HD
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          onClick={handleToggleCameraFacing}
+                          className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                          title="Trocar entre câmara frontal e traseira"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          <span>Inverter</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleCaptureCameraPhoto}
+                          className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg active:scale-95 cursor-pointer"
+                        >
+                          <Camera className="w-4 h-4 text-amber-300" />
+                          <span>Tirar Fotografia Agora</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <canvas ref={canvasRef} className="hidden" />
+
+              {/* VISUAL CROP PHOTO GALLERY SELECTOR */}
+              <div className="p-3.5 bg-emerald-50/70 rounded-2xl border border-emerald-200/80 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-extrabold text-emerald-950 text-xs flex items-center gap-1.5">
+                    <Sprout className="w-4 h-4 text-emerald-600" />
+                    Catálogo de Fotografias de Culturas Agrícolas
+                  </span>
+                  <span className="text-[10px] bg-emerald-200/80 text-emerald-900 px-2 py-0.5 rounded-full font-bold">
+                    {filteredCropPhotos.length} Fotos HD
+                  </span>
+                </div>
+
+                <p className="text-[11px] text-slate-600">
+                  Selecione uma fotografia real da cultura para aplicar a imagem em alta definição e preencher automaticamente os dados do produto:
+                </p>
+
+                {/* Search Bar & Category Filter Tabs */}
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    placeholder="🔍 Pesquisar cultura (ex: Tomate, Batata, Feijão, Banana, Mandioca, Piripiri...)"
+                    value={cropPhotoSearch}
+                    onChange={(e) => setCropPhotoSearch(e.target.value)}
+                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
+                  />
+
+                  {/* Category Filter Pills */}
+                  <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-none text-[10px]">
+                    {[
+                      "TODOS",
+                      "Hortaliças",
+                      "Tubérculos",
+                      "Frutas",
+                      "Cereais",
+                      "Leguminosas",
+                      "Animais/Aves",
+                      "Outros",
+                    ].map((cat) => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setCropCatFilter(cat)}
+                        className={`px-2.5 py-1 rounded-lg font-bold transition-all shrink-0 cursor-pointer ${
+                          cropCatFilter === cat
+                            ? "bg-emerald-700 text-white shadow-xs"
+                            : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Grid of Crop Photos */}
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-48 overflow-y-auto p-1.5 bg-white rounded-xl border border-emerald-200/60 shadow-inner">
+                  {filteredCropPhotos.length === 0 ? (
+                    <div className="col-span-full py-4 text-center text-slate-400 text-xs">
+                      Nenhuma cultura agrícola encontrada com esse nome.
+                    </div>
+                  ) : (
+                    filteredCropPhotos.map((crop) => {
+                      const isSelected = prodImgUrl === crop.imageUrl;
+                      return (
+                        <button
+                          key={crop.name}
+                          type="button"
+                          onClick={() => {
+                            setProdName(crop.name);
+                            setProdCategory(crop.category);
+                            setProdImgUrl(crop.imageUrl);
+                            setProdUnit(crop.defaultUnit);
+                            setProdPrice(crop.suggestedPrice);
+                            setAiMatchedCropName(crop.name);
+                          }}
+                          className={`group relative flex flex-col items-center p-1.5 rounded-xl border transition-all text-left cursor-pointer overflow-hidden ${
+                            isSelected
+                              ? "bg-emerald-50 border-emerald-600 ring-2 ring-emerald-500/50 shadow-md scale-95"
+                              : "bg-white border-slate-200 hover:border-emerald-300 hover:bg-slate-50"
+                          }`}
+                        >
+                          <div className="relative w-full aspect-square rounded-lg overflow-hidden bg-slate-100 mb-1">
+                            <img
+                              src={crop.imageUrl}
+                              alt={crop.name}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                              loading="lazy"
+                            />
+                            {isSelected && (
+                              <div className="absolute inset-0 bg-emerald-900/40 backdrop-blur-xs flex items-center justify-center">
+                                <span className="bg-emerald-600 text-white p-1 rounded-full shadow-md">
+                                  <Check className="w-3.5 h-3.5" />
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                          <span className="w-full text-[10px] font-extrabold text-slate-800 truncate text-center leading-tight">
+                            {crop.name}
+                          </span>
+                          <span className="text-[8.5px] text-emerald-800 font-semibold truncate">
+                            {crop.category}
+                          </span>
+                        </button>
+                      );
+                    })
+                  )}
                 </div>
               </div>
 
@@ -612,7 +1033,7 @@ export const FarmerDashboard: React.FC = () => {
                 </div>
                 {aiMatchedCropName && (
                   <span className="text-[10px] text-emerald-700 font-semibold mt-1 flex items-center gap-1">
-                    <Check className="w-3 h-3 text-emerald-600" /> IA identificou: {aiMatchedCropName} (Imagem HD e categoria ajustadas)
+                    <Check className="w-3 h-3 text-emerald-600" /> IA / Origem Foto: {aiMatchedCropName}
                   </span>
                 )}
               </div>
@@ -712,18 +1133,18 @@ export const FarmerDashboard: React.FC = () => {
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-800 text-[11px] flex items-center gap-1">
                       <ImageIcon className="w-3.5 h-3.5 text-emerald-700" />
-                      Fotografia do Produto Atribuída
+                      Fotografia Selecionada
                     </span>
                     <span className="text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">
                       Qualidade HD
                     </span>
                   </div>
                   <input
-                    type="url"
+                    type="text"
                     value={prodImgUrl}
                     onChange={(e) => setProdImgUrl(e.target.value)}
                     className="w-full px-2 py-1 bg-white border border-slate-200 rounded-lg font-mono text-[10px] text-slate-600 truncate"
-                    title="URL da fotografia"
+                    title="URL da fotografia ou Base64"
                   />
                 </div>
               </div>
@@ -766,17 +1187,33 @@ export const FarmerDashboard: React.FC = () => {
                 </div>
               </div>
 
-              <button
-                type="submit"
-                disabled={!termsAccepted}
-                className={`w-full py-3 font-bold rounded-xl shadow-md transition-all mt-2 ${
-                  termsAccepted
-                    ? "bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer"
-                    : "bg-slate-200 text-slate-400 cursor-not-allowed"
-                }`}
-              >
-                Publicar Produto no Mercado
-              </button>
+              {/* MODAL FOOTER WITH VOLTAR ANTERIOR AND SUBMIT BUTTONS */}
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleStopLiveCamera();
+                    setShowAddProdModal(false);
+                  }}
+                  className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>Voltar Anterior</span>
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={!termsAccepted}
+                  className={`flex-1 py-3 font-extrabold rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 ${
+                    termsAccepted
+                      ? "bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer"
+                      : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                  }`}
+                >
+                  <PlusCircle className="w-4 h-4 text-amber-300" />
+                  <span>Publicar Produto no Mercado</span>
+                </button>
+              </div>
             </form>
           </div>
         </div>
@@ -785,10 +1222,24 @@ export const FarmerDashboard: React.FC = () => {
       {/* 5. MODAL TO REGISTER MACHAMBA */}
       {showAddMachambaModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white max-w-md w-full rounded-3xl p-6 shadow-2xl border border-emerald-100 my-8">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
-              <h3 className="font-bold text-slate-900 text-base">Registar Nova Machamba</h3>
-              <button onClick={() => setShowAddMachambaModal(false)} className="text-slate-400 hover:text-slate-600">
+          <div className="bg-white max-w-md w-full rounded-3xl p-6 shadow-2xl border border-emerald-100 my-8 space-y-3">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-2">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddMachambaModal(false)}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <ArrowLeft className="w-4 h-4 text-slate-600" />
+                  <span>Voltar</span>
+                </button>
+                <h3 className="font-extrabold text-slate-900 text-base">Registar Nova Machamba</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddMachambaModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -840,12 +1291,23 @@ export const FarmerDashboard: React.FC = () => {
                 />
               </div>
 
-              <button
-                type="submit"
-                className="w-full py-3 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl shadow-md mt-2"
-              >
-                Mapear e Guardar Machamba
-              </button>
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddMachambaModal(false)}
+                  className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>Voltar Anterior</span>
+                </button>
+
+                <button
+                  type="submit"
+                  className="flex-1 py-3 bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold rounded-xl shadow-md transition-all cursor-pointer"
+                >
+                  Mapear e Guardar Machamba
+                </button>
+              </div>
             </form>
           </div>
         </div>
@@ -972,6 +1434,12 @@ export const FarmerDashboard: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* B.I Farmer 18+ Verification Modal */}
+      <FarmerVerificationModal
+        isOpen={showVerificationModal}
+        onClose={() => setShowVerificationModal(false)}
+      />
     </div>
   );
 };

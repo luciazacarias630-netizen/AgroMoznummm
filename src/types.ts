@@ -33,6 +33,16 @@ export interface UserProfile {
   membershipFeePaid?: boolean; // For Farmers (50 MT)
   membershipFeeStatus?: "Pendente" | "Aprovado" | "Rejeitado";
 
+  // Verification & B.I 18+ Verification fields
+  isVerifiedFarmer?: boolean; // True when B.I is verified and user is >= 18
+  verificationStatus?: "Nao_Enviado" | "Pendente" | "Aprovado" | "Recusado";
+  biFrontUrl?: string; // B.I Frente image
+  biBackUrl?: string; // B.I Verso image
+  birthDate?: string; // Birthdate YYYY-MM-DD
+  detectedAge?: number; // Calculated/Identified age in years
+  verificationSubmittedAt?: string;
+  rejectionReason?: string;
+
   // Farmer specific fields
   farmName?: string;
   farmArea?: string; // e.g. "2 Hectares"

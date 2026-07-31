@@ -90,58 +90,6 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       )}
 
-      {/* FLOATING REALTIME PUSH TOAST ALERT BANNER */}
-      {activePushToast && (
-        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-lg animate-bounce-short">
-          <div className="bg-slate-900 text-white p-4 rounded-2xl shadow-2xl border-2 border-amber-400 flex items-start justify-between gap-3 backdrop-blur-md bg-opacity-95">
-            <div className="flex items-start gap-3">
-              <div className="p-2 bg-amber-500/20 text-amber-400 rounded-xl shrink-0 mt-0.5">
-                {activePushToast.type === "ORDER" ? (
-                  <Package className="w-5 h-5 text-amber-300" />
-                ) : activePushToast.type === "MESSAGE" ? (
-                  <MessageSquare className="w-5 h-5 text-emerald-400" />
-                ) : (
-                  <BellRing className="w-5 h-5 text-amber-400 animate-pulse" />
-                )}
-              </div>
-              <div className="space-y-0.5 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 bg-amber-500 text-slate-950 rounded-md">
-                    ALERTA PUSH
-                  </span>
-                  <h4 className="text-xs font-bold text-white truncate">
-                    {activePushToast.title}
-                  </h4>
-                </div>
-                <p className="text-xs text-slate-200 leading-snug">
-                  {activePushToast.message}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-1.5 shrink-0">
-              {activePushToast.type === "MESSAGE" && onOpenChat && (
-                <button
-                  onClick={() => {
-                    dismissPushToast();
-                    onOpenChat();
-                  }}
-                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold flex items-center gap-1"
-                >
-                  Ver <ExternalLink className="w-3 h-3" />
-                </button>
-              )}
-              <button
-                onClick={dismissPushToast}
-                className="p-1 text-slate-400 hover:text-white rounded-lg transition-all"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <header className="sticky top-0 z-40 bg-white border-b border-green-100 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
@@ -258,14 +206,16 @@ export const Header: React.FC<HeaderProps> = ({
                 </button>
               )}
 
-              {/* AgroMoz Wallet Button */}
-              <button
-                onClick={onOpenWallet}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-200/80 rounded-xl text-xs font-semibold transition-all"
-              >
-                <Wallet className="w-4 h-4 text-amber-600" />
-                <span className="hidden sm:inline">{t("nav.wallet")}</span>
-              </button>
+              {/* AgroMoz Wallet Button - Exclusivo para Agricultores, Transportadores e Admins */}
+              {currentUser?.role !== "BUYER" && (
+                <button
+                  onClick={onOpenWallet}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-200/80 rounded-xl text-xs font-semibold transition-all"
+                >
+                  <Wallet className="w-4 h-4 text-amber-600" />
+                  <span className="hidden sm:inline">{t("nav.wallet")}</span>
+                </button>
+              )}
 
               {/* NOTIFICATIONS BELL BUTTON & DROPDOWN */}
               <div className="relative">

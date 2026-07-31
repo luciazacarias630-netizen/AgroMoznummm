@@ -14,6 +14,8 @@ import { WalletModal } from "./components/WalletModal";
 import { OrderTrackingModal } from "./components/OrderTrackingModal";
 import { UserGuidedTour } from "./components/UserGuidedTour";
 import { ProfileModal } from "./components/ProfileModal";
+import { TopToastNotification } from "./components/TopToastNotification";
+import { DevicePermissionPrompt } from "./components/DevicePermissionPrompt";
 import {
   ShoppingBag,
   Sprout,
@@ -63,6 +65,16 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col">
+      {/* Top Floating Realtime Push Toast Notification Banner */}
+      <TopToastNotification
+        onOpenTrackingModal={(orderId) => setTrackingOrderId(orderId)}
+        onOpenWallet={() => setShowWallet(true)}
+        onOpenChat={() => setChatPartner({ id: "farmer-1", name: "Mateus Cossa" })}
+      />
+
+      {/* Device Notification Permission Banner Prompt */}
+      <DevicePermissionPrompt />
+
       {/* Top Main Navigation Header */}
       <Header
         onOpenWallet={() => setShowWallet(true)}
@@ -202,7 +214,9 @@ export function App() {
         />
       )}
 
-      {showWallet && <WalletModal onClose={() => setShowWallet(false)} />}
+      {showWallet && currentUser?.role !== "BUYER" && (
+        <WalletModal onClose={() => setShowWallet(false)} />
+      )}
 
       {trackingOrderId && (
         <OrderTrackingModal

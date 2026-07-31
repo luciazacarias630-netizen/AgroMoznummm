@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { useAgro } from "../context/AgroContext";
 import { MOZAMBIQUE_PROVINCES } from "../data/mozambiqueLocations";
+import { VerifiedFarmerBadge } from "./VerifiedFarmerBadge";
+import { FarmerVerificationModal } from "./FarmerVerificationModal";
 import {
   X,
   Camera,
@@ -13,6 +15,9 @@ import {
   Save,
   Image as ImageIcon,
   Building,
+  ShieldCheck,
+  BadgeCheck,
+  AlertCircle,
 } from "lucide-react";
 
 interface ProfileModalProps {
@@ -51,18 +56,19 @@ const PRESET_AVATARS = [
 export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) => {
   const { currentUser, updateUserProfile } = useAgro();
 
-  if (!currentUser || !isOpen) return null;
-
-  const [name, setName] = useState(currentUser.name || "");
-  const [phone, setPhone] = useState(currentUser.phone || "");
-  const [photoUrl, setPhotoUrl] = useState(currentUser.photoUrl || PRESET_AVATARS[0].url);
-  const [province, setProvince] = useState(currentUser.province || "Maputo Província");
-  const [district, setDistrict] = useState(currentUser.district || "");
-  const [farmName, setFarmName] = useState(currentUser.farmName || "");
-  const [bio, setBio] = useState(currentUser.bio || "");
+  const [name, setName] = useState(currentUser?.name || "");
+  const [phone, setPhone] = useState(currentUser?.phone || "");
+  const [photoUrl, setPhotoUrl] = useState(currentUser?.photoUrl || PRESET_AVATARS[0].url);
+  const [province, setProvince] = useState(currentUser?.province || "Maputo Província");
+  const [district, setDistrict] = useState(currentUser?.district || "");
+  const [farmName, setFarmName] = useState(currentUser?.farmName || "");
+  const [bio, setBio] = useState(currentUser?.bio || "");
   const [photoTab, setPhotoTab] = useState<"UPLOAD" | "PRESETS" | "URL">("UPLOAD");
   const [customUrl, setCustomUrl] = useState("");
   const [successMessage, setSuccessMessage] = useState(false);
+  const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
+
+  if (!currentUser || !isOpen) return null;
 
   // Handle local image file selection
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -270,6 +276,106 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
             </div>
           </div>
 
+          {/* VERIFICATION & BADGE SECTION (Exempt for Admins) */}
+          {currentUser.role === "ADMIN" ? (
+            <div className="p-4 bg-slate-900 text-white rounded-2xl border border-slate-800 space-y-1 shadow-xs">
+              <div className="flex items-center gap-2 font-black text-amber-300 text-xs">
+                <ShieldCheck className="w-4 h-4 text-amber-400" />
+                <span>Conta de Administrador do Sistema</span>
+              </div>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                Como Administrador do sistema AgroMoz, a sua conta possui permissões totais de gestão e fiscalização. Não é necessária a submissão de B.I ou verificação de idade.
+              </p>
+            </div>
+          ) : (
+            <div
+              className={`p-4 rounded-2xl border space-y-2.5 transition-all ${
+                currentUser.isVerifiedFarmer
+                  ? "bg-emerald-50 border-emerald-200/90"
+                  : currentUser.verificationStatus === "Recusado"
+                  ? "bg-red-50 border-red-200"
+                  : "bg-amber-50 border-amber-200"
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-extrabold uppercase tracking-wider flex items-center gap-1.5 text-slate-900">
+                  <ShieldCheck
+                    className={`w-4 h-4 ${
+                      currentUser.isVerifiedFarmer
+                        ? "text-emerald-700"
+                        : currentUser.verificationStatus === "Recusado"
+                        ? "text-red-700"
+                        : "text-amber-700"
+                    }`}
+                  />
+                  Badge & Verificação de Identidade (B.I)
+                </span>
+
+                {currentUser.isVerifiedFarmer ? (
+                  <VerifiedFarmerBadge isVerified={true} status="Aprovado" size="sm" />
+                ) : currentUser.verificationStatus === "Recusado" ? (
+                  <VerifiedFarmerBadge isVerified={false} status="Recusado" showIfNotVerified={true} size="sm" />
+                ) : (
+                  <span className="text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-full">
+                    {currentUser.verificationStatus === "Pendente" ? "Verificação Pendente" : "Não Verificado"}
+                  </span>
+                )}
+              </div>
+
+              {currentUser.isVerifiedFarmer ? (
+                <div className="p-3 bg-white rounded-xl border border-emerald-200 text-xs text-emerald-900 space-y-1">
+                  <div className="flex items-center gap-2 font-bold text-emerald-950">
+                    <BadgeCheck className="w-4.5 h-4.5 text-emerald-600" />
+                    <span>Aprovado: Agricultor Verificado (Check Verde ✓)</span>
+                  </div>
+                  <p className="text-[11px] text-slate-600">
+                    Idade confirmada pelo sistema: <strong>{currentUser.detectedAge || 25} Anos</strong> (Maior de 18 Anos). O badge com check verde está visível em todas as suas publicações.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setIsVerificationModalOpen(true)}
+                    className="text-[11px] font-extrabold text-emerald-700 hover:underline pt-1 block cursor-pointer"
+                  >
+                    Ver Documentos B.I Submetidos
+                  </button>
+                </div>
+              ) : currentUser.verificationStatus === "Recusado" ? (
+                <div className="p-3 bg-white rounded-xl border border-red-200 text-xs text-red-900 space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-red-950">
+                    <AlertCircle className="w-4.5 h-4.5 text-red-600 shrink-0" />
+                    <span>Verificação Recusada (Não Aprovado - Vermelho)</span>
+                  </div>
+                  <p className="text-[11px] text-slate-700 leading-relaxed">
+                    {currentUser.rejectionReason ||
+                      "A verificação do seu B.I foi recusada. O documento submetido indicou idade inferior a 18 anos ou documentação incompatível."}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setIsVerificationModalOpen(true)}
+                    className="w-full py-2 bg-red-700 hover:bg-red-800 text-white rounded-xl font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer active:scale-95"
+                  >
+                    <ShieldCheck className="w-4 h-4 text-amber-300" />
+                    <span>Submeter Novo B.I para Reavaliação (18+)</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="p-3 bg-white rounded-xl border border-amber-200 text-xs text-slate-700 space-y-2">
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                    Para obter o <strong>Badge de Agricultor Verificado (Check Verde ✓)</strong> no seu perfil, submeta fotos do seu B.I (Frente e Verso). Apenas maiores de 18 anos são aceites.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setIsVerificationModalOpen(true)}
+                    className="w-full py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer active:scale-95"
+                  >
+                    <BadgeCheck className="w-4 h-4 text-amber-300" />
+                    <span>Submeter B.I para Validação de Idade (18+)</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* BASIC INFO FIELDS */}
           <div className="space-y-3">
             <div>
@@ -317,7 +423,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
                       setProvince(e.target.value);
                       const prov = MOZAMBIQUE_PROVINCES.find((p) => p.name === e.target.value);
                       if (prov && prov.districts.length > 0) {
-                        setDistrict(prov.districts[0]);
+                        setDistrict(prov.districts[0].name);
                       }
                     }}
                     className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-emerald-600"
@@ -344,8 +450,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
                 >
                   <option value="">Selecione o Distrito</option>
                   {selectedProvinceData.districts.map((d) => (
-                    <option key={d} value={d}>
-                      {d}
+                    <option key={d.name} value={d.name}>
+                      {d.name}
                     </option>
                   ))}
                 </select>
@@ -402,6 +508,12 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
             </button>
           </div>
         </form>
+
+        {/* Farmer B.I Verification Modal */}
+        <FarmerVerificationModal
+          isOpen={isVerificationModalOpen}
+          onClose={() => setIsVerificationModalOpen(false)}
+        />
       </div>
     </div>
   );

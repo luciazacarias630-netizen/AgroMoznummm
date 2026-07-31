@@ -218,6 +218,38 @@ export const CROP_DATABASE: CropMatch[] = [
     defaultUnit: "saco (10kg)",
     suggestedPrice: 250,
   },
+  {
+    keywords: ["gergelim", "sesame"],
+    name: "Gergelim Branco / Castanho",
+    category: "Outros",
+    imageUrl: "https://images.unsplash.com/photo-1508746829417-e6f548d8d6ed?auto=format&fit=crop&q=80&w=800",
+    defaultUnit: "saco (50kg)",
+    suggestedPrice: 2800,
+  },
+  {
+    keywords: ["piripiri", "pimenta", "chili", "chilli", "malagueta"],
+    name: "Piripiri / Pimenta Malagueta",
+    category: "Hortaliças",
+    imageUrl: "https://images.unsplash.com/photo-1588252303782-cb80119abd6d?auto=format&fit=crop&q=80&w=800",
+    defaultUnit: "kg",
+    suggestedPrice: 350,
+  },
+  {
+    keywords: ["abacate", "avocado"],
+    name: "Abacate Manteiga",
+    category: "Frutas",
+    imageUrl: "https://images.unsplash.com/photo-1523049673857-eb18f1d7b578?auto=format&fit=crop&q=80&w=800",
+    defaultUnit: "caixa (10kg)",
+    suggestedPrice: 400,
+  },
+  {
+    keywords: ["couve", "kale"],
+    name: "Couve Tronchuda / Galega",
+    category: "Hortaliças",
+    imageUrl: "https://images.unsplash.com/photo-1524179091875-bf98a9a6ae57?auto=format&fit=crop&q=80&w=800",
+    defaultUnit: "molho (10 un)",
+    suggestedPrice: 120,
+  },
 ];
 
 /**
