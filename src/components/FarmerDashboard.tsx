@@ -75,6 +75,9 @@ export const FarmerDashboard: React.FC = () => {
   const [prodPrice, setProdPrice] = useState<number>(300);
   const [prodUnit, setProdUnit] = useState("caixa (20kg)");
   const [prodQty, setProdQty] = useState<number>(50);
+  const [prodMoq, setProdMoq] = useState<number>(1);
+  const [prodBadgeText, setProdBadgeText] = useState("Mais barato que os similares");
+  const [prodDiscount, setProdDiscount] = useState<number>(15);
   const [prodImgUrl, setProdImgUrl] = useState(
     "https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&q=80&w=600"
   );
@@ -299,6 +302,14 @@ export const FarmerDashboard: React.FC = () => {
 
   const handleCreateProduct = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!currentUser?.isVerifiedFarmer && currentUser?.verificationStatus !== "Aprovado") {
+      alert("⚠️ Acesso Bloqueado:\n\nSem primeiro realizar a verificação de idade (18+) e B.I, não é possível publicar produtos até que a verificação seja completada.");
+      setShowAddProdModal(false);
+      setShowVerificationModal(true);
+      return;
+    }
+
     if (!termsAccepted) {
       alert("Por favor aceite os Termos e Condições da AgroMoz para publicar o produto.");
       return;
@@ -314,6 +325,9 @@ export const FarmerDashboard: React.FC = () => {
         pricePerUnit: finalConsumerPrice,
         unit: prodUnit,
         availableQuantity: prodQty,
+        minOrderQuantity: prodMoq || 1,
+        badgeText: prodBadgeText || "Mais barato que os similares",
+        discountPercent: prodDiscount || 15,
         images: [prodImgUrl],
         termsAccepted: true,
       });
@@ -394,14 +408,51 @@ export const FarmerDashboard: React.FC = () => {
           </button>
 
           <button
-            onClick={() => setShowAddProdModal(true)}
-            className="flex-1 md:flex-initial py-2.5 px-4 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-800/20 flex items-center justify-center gap-1.5 transition-all"
+            onClick={() => {
+              if (!currentUser?.isVerifiedFarmer && currentUser?.verificationStatus !== "Aprovado") {
+                alert("⚠️ Verificação de Idade Obrigatória (18+):\n\nSem primeiro fazer a verificação do seu B.I e comprovar ser maior de 18 anos, não poderá publicar nenhum produto até que a verificação seja completada.");
+                setShowVerificationModal(true);
+                return;
+              }
+              setShowAddProdModal(true);
+            }}
+            className="flex-1 md:flex-initial py-2.5 px-4 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-800/20 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
           >
             <PlusCircle className="w-4 h-4 text-amber-300" />
             + Publicar Produto
           </button>
         </div>
       </div>
+
+      {/* BANNER DE ALERTA: VERIFICAÇÃO DE IDADE (18+) PENDENTE */}
+      {!currentUser?.isVerifiedFarmer && currentUser?.verificationStatus !== "Aprovado" && (
+        <div className="p-4 bg-amber-500/10 border-2 border-amber-500/40 rounded-3xl flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 bg-amber-500/20 rounded-2xl text-amber-600 shrink-0 mt-0.5">
+              <ShieldAlert className="w-6 h-6 text-amber-600" />
+            </div>
+            <div>
+              <h4 className="font-extrabold text-slate-900 text-sm flex items-center gap-2 flex-wrap">
+                <span>Verificação de Idade (18+) e B.I Pendente</span>
+                <span className="bg-amber-100 text-amber-900 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                  Publicação Bloqueada
+                </span>
+              </h4>
+              <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                Sem primeiro realizar a verificação do seu B.I e comprovar ser maior de 18 anos, não poderá publicar nenhum produto na plataforma AgroMoz até que a verificação seja completada.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowVerificationModal(true)}
+            className="w-full md:w-auto px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 transition-all shadow-xs cursor-pointer active:scale-95 shrink-0"
+          >
+            <ShieldCheck className="w-4 h-4 text-slate-950" />
+            <span>Verificar B.I (18+) Agora</span>
+          </button>
+        </div>
+      )}
 
       {/* 2. FINANCIAL STATS CARDS (ESCROW & WALLET) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -632,8 +683,15 @@ export const FarmerDashboard: React.FC = () => {
           <div className="text-center py-8 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
             <p className="text-xs text-slate-500">Ainda não publicou nenhum produto agrícola.</p>
             <button
-              onClick={() => setShowAddProdModal(true)}
-              className="mt-2 text-xs text-emerald-700 font-bold hover:underline"
+              onClick={() => {
+                if (!currentUser?.isVerifiedFarmer && currentUser?.verificationStatus !== "Aprovado") {
+                  alert("⚠️ Verificação de Idade Obrigatória (18+):\n\nSem primeiro fazer a verificação do seu B.I e comprovar ser maior de 18 anos, não poderá publicar nenhum produto até que a verificação seja completada.");
+                  setShowVerificationModal(true);
+                  return;
+                }
+                setShowAddProdModal(true);
+              }}
+              className="mt-2 text-xs text-emerald-700 font-bold hover:underline cursor-pointer"
             >
               + Publicar primeiro produto agora
             </button>
@@ -707,6 +765,48 @@ export const FarmerDashboard: React.FC = () => {
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white max-w-md w-full rounded-3xl p-6 shadow-2xl border border-emerald-100 my-8 space-y-4">
             
+            {/* UNVERIFIED BLOCKING NOTICE INSIDE MODAL */}
+            {!currentUser?.isVerifiedFarmer && currentUser?.verificationStatus !== "Aprovado" ? (
+              <div className="space-y-4 text-center py-4">
+                <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
+                  <ShieldAlert className="w-8 h-8" />
+                </div>
+                <h3 className="text-lg font-black text-slate-900">
+                  Verificação de Idade (18+) Obrigatória
+                </h3>
+                <p className="text-xs text-slate-600 leading-relaxed max-w-xs mx-auto">
+                  Sem primeiro realizar a verificação do seu B.I e comprovar ser maior de 18 anos, não poderá publicar nenhum produto na plataforma AgroMoz até que a verificação seja completada.
+                </p>
+                <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 text-left text-[11px] text-amber-900 space-y-1">
+                  <span className="font-extrabold block">📌 O que precisa para desbloquear?</span>
+                  <ul className="list-disc pl-4 space-y-0.5 font-medium">
+                    <li>Fotografia do B.I (Frente e Verso)</li>
+                    <li>Comprovação da data de nascimento (&gt;= 18 anos)</li>
+                  </ul>
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddProdModal(false)}
+                    className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold rounded-xl text-xs flex-1 cursor-pointer"
+                  >
+                    Voltar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddProdModal(false);
+                      setShowVerificationModal(true);
+                    }}
+                    className="px-4 py-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl text-xs flex-1 flex items-center justify-center gap-1.5 shadow-md cursor-pointer"
+                  >
+                    <ShieldCheck className="w-4 h-4 text-slate-950" />
+                    <span>Verificar B.I Agora</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+            <>
             {/* MODAL HEADER WITH VOLTAR BUTTON */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
@@ -1093,6 +1193,48 @@ export const FarmerDashboard: React.FC = () => {
                 </div>
               </div>
 
+              {/* ALIBABA STYLE COMMERCIAL ATTRIBUTES: MOQ & PROMO BADGE */}
+              <div className="grid grid-cols-3 gap-2 p-3 bg-amber-50/70 rounded-2xl border border-amber-200/80">
+                <div>
+                  <label className="block font-bold text-slate-800 text-[10.5px] mb-1">Qtd Mín. (MOQ)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={prodMoq}
+                    onChange={(e) => setProdMoq(Math.max(1, Number(e.target.value)))}
+                    className="w-full px-2.5 py-1.5 bg-white border border-amber-300 rounded-xl text-xs font-bold text-slate-900 outline-none"
+                    placeholder="Ex: 1 ou 10"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-800 text-[10.5px] mb-1">Desconto (%)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="90"
+                    value={prodDiscount}
+                    onChange={(e) => setProdDiscount(Number(e.target.value))}
+                    className="w-full px-2.5 py-1.5 bg-white border border-amber-300 rounded-xl text-xs font-bold text-red-600 outline-none"
+                    placeholder="Ex: 15%"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-800 text-[10.5px] mb-1">Selo de Destaque</label>
+                  <select
+                    value={prodBadgeText}
+                    onChange={(e) => setProdBadgeText(e.target.value)}
+                    className="w-full px-2 py-1.5 bg-white border border-amber-300 rounded-xl text-[10.5px] font-bold text-slate-800 outline-none"
+                  >
+                    <option value="Mais barato que os similares">⚡ Mais barato</option>
+                    <option value="Colhido Hoje Fresco">🌱 Colhido Hoje</option>
+                    <option value="Oferta Relâmpago">🔥 Oferta Especial</option>
+                    <option value="Direto da Machamba">🚜 Direto Machamba</option>
+                  </select>
+                </div>
+              </div>
+
               {/* TRANSPARENT 3% AGROMOZ PRICE BREAKDOWN CARD */}
               <div className="p-3.5 bg-gradient-to-br from-slate-900 to-emerald-950 text-white rounded-2xl border border-emerald-800/50 space-y-2">
                 <div className="flex items-center justify-between text-[11px] text-emerald-300 font-bold border-b border-emerald-800/60 pb-1.5">
@@ -1118,6 +1260,55 @@ export const FarmerDashboard: React.FC = () => {
                   <div className="flex justify-between items-center text-emerald-300 font-extrabold text-sm pt-1 border-t border-emerald-800/50">
                     <span>Preço final para o consumidor:</span>
                     <span className="font-mono text-amber-300">{finalConsumerPrice} MT/{prodUnit || "unidade"}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* PREVIEW DA ORGANIZAÇÃO DO PRODUTO (ESTILO MARKETPLACE ALIBABA TOP DEALS) */}
+              <div className="p-3 bg-slate-900 rounded-2xl border border-emerald-500/40 text-white space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-extrabold text-amber-300 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" /> Previsão de Apresentação no Mercado
+                  </span>
+                  <span className="text-[9px] bg-amber-400 text-slate-950 px-2 py-0.5 rounded-full font-black uppercase">
+                    Estilo Organizado
+                  </span>
+                </div>
+
+                {/* Card Preview Container */}
+                <div className="bg-white text-slate-900 rounded-2xl p-3 border border-slate-200 shadow-sm max-w-[220px] mx-auto">
+                  {/* Price & MOQ Row */}
+                  <div className="flex items-baseline justify-between gap-1 mb-0.5">
+                    <span className="text-base font-black text-slate-950">
+                      {finalConsumerPrice} <span className="text-xs font-bold text-slate-800">MTn</span>
+                    </span>
+                    <span className="text-[9.5px] font-extrabold text-slate-500">
+                      MOQ: {prodMoq || 1}
+                    </span>
+                  </div>
+
+                  {/* Red/Orange Promo Badge */}
+                  <div className="text-[10px] font-bold text-red-600 mb-1.5 flex items-center gap-1 truncate">
+                    <span>⚡</span>
+                    <span className="truncate">{prodBadgeText || "Mais barato que os similares"}</span>
+                  </div>
+
+                  {/* Square Image Box */}
+                  <div className="relative aspect-square w-full bg-slate-100 rounded-xl overflow-hidden mb-1.5 border border-slate-200">
+                    <img src={prodImgUrl} alt="Preview" className="w-full h-full object-cover" />
+                    <span className="absolute top-1.5 left-1.5 bg-white/90 backdrop-blur-xs px-1.5 py-0.5 rounded text-[8.5px] font-black text-emerald-800 border border-slate-200">
+                      🌱 AgroMoz
+                    </span>
+                    {prodDiscount > 0 && (
+                      <span className="absolute top-1.5 right-1.5 bg-orange-500 text-slate-950 font-black text-[8.5px] px-1.5 py-0.5 rounded">
+                        -{prodDiscount}%
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Product Title */}
+                  <div className="text-[11px] font-extrabold text-slate-900 line-clamp-2 leading-tight">
+                    {prodName || "Nome do Produto Agrícola"}
                   </div>
                 </div>
               </div>
@@ -1215,6 +1406,8 @@ export const FarmerDashboard: React.FC = () => {
                 </button>
               </div>
             </form>
+            </>
+            )}
           </div>
         </div>
       )}

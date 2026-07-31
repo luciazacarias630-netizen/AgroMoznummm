@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { useAgro } from "../context/AgroContext";
-import { UserProfile } from "../types";
 import { VerifiedFarmerBadge } from "./VerifiedFarmerBadge";
 import {
   ShieldCheck,
@@ -13,16 +12,12 @@ import {
   UserCheck,
   UserX,
   UserPlus,
-  Filter,
-  User,
   Sprout,
   Truck,
   ShoppingBag,
-  Sparkles,
-  RefreshCw,
   Phone,
-  MapPin,
-  FileText,
+  Download,
+  FileSpreadsheet,
 } from "lucide-react";
 
 export const AdminDashboard: React.FC = () => {
@@ -36,7 +31,6 @@ export const AdminDashboard: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<"ALL" | "VERIFIED" | "REJECTED" | "PENDING">("ALL");
   const [filterRole, setFilterRole] = useState<"ALL" | "FARMER" | "DRIVER" | "BUYER">("ALL");
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
 
   // --- MÉTRICAS EXCLUSIVAS DO ADMINISTRADOR ---
   // 1. Quantas pessoas cadastradas
@@ -114,6 +108,72 @@ export const AdminDashboard: React.FC = () => {
 
     return true;
   });
+
+  // Exportar lista de utilizadores filtrados em formato CSV
+  const exportUsersToCSV = () => {
+    if (filteredUsers.length === 0) {
+      alert("Nenhum utilizador encontrado com os filtros e pesquisas atuais.");
+      return;
+    }
+
+    const headers = [
+      "ID",
+      "Nome",
+      "Papel na Plataforma",
+      "Telefone",
+      "Email",
+      "Provincia",
+      "Distrito",
+      "Estado Verificacao BI",
+      "Numero do BI",
+      "Motivo de Recusa",
+      "Data de Registo"
+    ];
+
+    const rows = filteredUsers.map((u) => {
+      const roleText =
+        u.role === "FARMER"
+          ? "Agricultor"
+          : u.role === "DRIVER"
+          ? "Transportador"
+          : u.role === "BUYER"
+          ? "Comprador"
+          : "Administrador";
+
+      const isVerif =
+        u.isVerifiedFarmer || u.isApproved || u.verificationStatus === "Aprovado" || u.role === "BUYER";
+      const isRej = u.verificationStatus === "Recusado" || !!u.rejectionReason || u.isApproved === false;
+      const statusText = isVerif ? "Aprovado / Verificado" : isRej ? "Recusado" : "Pendente";
+
+      const createdDate = u.createdAt ? new Date(u.createdAt).toLocaleDateString("pt-MZ") : "N/A";
+
+      return [
+        u.id,
+        u.name,
+        roleText,
+        u.phone,
+        u.email || "",
+        u.province || "",
+        u.district || "",
+        statusText,
+        u.biNumber || "",
+        u.rejectionReason || "",
+        createdDate,
+      ].map((val) => `"${String(val).replace(/"/g, '""')}"`).join(",");
+    });
+
+    const csvContent = "\uFEFF" + [headers.map((h) => `"${h}"`).join(","), ...rows].join("\r\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const filename = `agromoz_utilizadores_${filterRole.toLowerCase()}_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.setAttribute("href", url);
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-6 pb-16">
@@ -230,6 +290,43 @@ export const AdminDashboard: React.FC = () => {
 
       {/* PAINEL DE CONTROLO DE UTILIZADORES */}
       <div className="bg-white p-6 rounded-3xl shadow-xs border border-emerald-100 space-y-5">
+        {/* BARRA DE PESQUISA RÁPIDA DE USUÁRIOS (NOME / TELEFONE) */}
+        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <label className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
+              <Search className="w-4 h-4 text-emerald-600" />
+              Pesquisa Rápida para Revisão de Usuários
+            </label>
+            {searchTerm && (
+              <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
+                <Users className="w-3 h-3 text-emerald-700" />
+                {filteredUsers.length} resultado(s) para "{searchTerm}"
+              </span>
+            )}
+          </div>
+
+          <div className="relative flex items-center">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Digite o nome do usuário ou número de telefone (ex: 841234567, João)..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-900 placeholder-slate-400 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 transition-all shadow-2xs"
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm("")}
+                className="absolute right-3 p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-all cursor-pointer"
+                title="Limpar pesquisa"
+              >
+                <XCircle className="w-4 h-4 text-slate-400" />
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-4">
           <div>
             <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
@@ -291,17 +388,17 @@ export const AdminDashboard: React.FC = () => {
               <option value="BUYER">🛒 Compradores ({cadastradosBuyers})</option>
             </select>
 
-            {/* Pesquisa */}
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
-              <input
-                type="text"
-                placeholder="Pesquisar por nome, telefone..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none w-48 focus:w-60 transition-all"
-              />
-            </div>
+            {/* Botão de Exportação para CSV */}
+            <button
+              type="button"
+              onClick={exportUsersToCSV}
+              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+              title="Exportar lista de utilizadores filtrados em formato CSV"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-100" />
+              <span>Exportar CSV ({filteredUsers.length})</span>
+              <Download className="w-3.5 h-3.5 text-emerald-200" />
+            </button>
           </div>
         </div>
 

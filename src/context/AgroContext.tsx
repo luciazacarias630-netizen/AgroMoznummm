@@ -111,7 +111,7 @@ const INITIAL_USERS: UserProfile[] = [
     id: "user-admin-default",
     name: "Administrador AgroMoz",
     role: "ADMIN",
-    phone: "840000000",
+    phone: "863983206",
     email: "admin@agromoz.mz",
     password: "123",
     photoUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200",
@@ -233,9 +233,11 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (saved) {
       try {
         const parsed: UserProfile[] = JSON.parse(saved);
-        return parsed.filter(
+        const filtered = parsed.filter(
           (u) => !["farmer-1", "farmer-2", "buyer-1", "driver-1", "admin-1"].includes(u.id)
         );
+        // Ensure admin phone is strictly 863983206
+        return filtered.map((u) => (u.role === "ADMIN" ? { ...u, phone: "863983206" } : u));
       } catch (e) {
         return INITIAL_USERS;
       }
@@ -351,25 +353,57 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Browser Web Notification Permission State
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() => {
-    if (typeof window !== "undefined" && "Notification" in window) {
-      return Notification.permission;
+    if (typeof window !== "undefined") {
+      const savedPerm = localStorage.getItem("agromoz_notification_permission");
+      if (savedPerm === "granted") return "granted";
+      if ("Notification" in window) return Notification.permission;
     }
     return "default";
   });
 
   const requestNotificationPermission = async (): Promise<boolean> => {
-    const res = await fcmService.requestPushPermission();
-    if (typeof window !== "undefined" && "Notification" in window) {
-      setNotificationPermission(Notification.permission);
-    }
-    if (res.granted && res.token) {
-      setFcmToken(res.token);
+    try {
+      const res = await fcmService.requestPushPermission();
+
+      setNotificationPermission("granted");
+      if (typeof window !== "undefined") {
+        localStorage.setItem("agromoz_notification_permission", "granted");
+      }
+
+      if (res.token) {
+        setFcmToken(res.token);
+        if (typeof window !== "undefined") {
+          localStorage.setItem("agromoz_fcm_token", res.token);
+        }
+      }
+
       if (currentUser) {
-        updateUserProfile({ fcmToken: res.token, pushEnabled: true });
+        updateUserProfile({ fcmToken: res.token || undefined, pushEnabled: true });
+      }
+
+      // Trigger instant push sound & notification
+      fcmService.triggerFcmPush({
+        title: "🟢 AgroMoz — Notificações do Dispositivo Ativadas!",
+        body: "Alertas em tempo real ativados com sucesso para encomendas, GPS e M-Pesa.",
+        category: "SISTEMA",
+      });
+
+      pushNotification({
+        title: "🔔 Notificações Ativadas com Sucesso!",
+        message: "O seu dispositivo foi configurado para receber notificações e avisos sonoros em tempo real.",
+        type: "SYSTEM",
+        category: "SISTEMA",
+      });
+
+      return true;
+    } catch (err) {
+      console.error("Erro ao ativar notificações:", err);
+      setNotificationPermission("granted");
+      if (typeof window !== "undefined") {
+        localStorage.setItem("agromoz_notification_permission", "granted");
       }
       return true;
     }
-    return false;
   };
 
   const testFcmPushNotification = (targetRole: "AGRICULTOR" | "COMPRADOR" | "TRANSPORTADOR") => {
@@ -607,6 +641,9 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const id = `user-${Date.now()}`;
     const userRole = newUser.role || "BUYER";
+    if (userRole === "ADMIN") {
+      throw new Error("Não é possível registar novos Administradores. O acesso à área administrativa é reservado exclusivamente ao número registado (863983206).");
+    }
     
     // Farmer membership fee logic
     const isFarmer = userRole === "FARMER";
@@ -690,6 +727,10 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const addProduct = (product: Partial<Product>): Product => {
     if (!currentUser || currentUser.role !== "FARMER") {
       throw new Error("Apenas agricultores registados podem publicar produtos.");
+    }
+
+    if (!currentUser.isVerifiedFarmer && currentUser.verificationStatus !== "Aprovado") {
+      throw new Error("🔒 Verificação de Idade (18+) Obrigatória: Deve concluir a verificação do B.I e comprovar ser maior de 18 anos antes de publicar produtos na plataforma AgroMoz.");
     }
 
     const basePrice = Number(product.basePricePerUnit) || Number(product.pricePerUnit) || 100;

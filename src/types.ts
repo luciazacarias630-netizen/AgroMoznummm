@@ -93,6 +93,11 @@ export interface Product {
   termsAccepted?: boolean;
   unit: string; // kg, saco (50kg), caixa, ton, duzia, etc.
   availableQuantity: number;
+  minOrderQuantity?: number; // MOQ (Minimum Order Quantity)
+  salesCount?: number; // Volume de vendas ex: 1500 vendidos
+  discountPercent?: number; // Percentual de desconto ex: 15 (-15%)
+  isBestOffer?: boolean; // Tag "Mais barato que os similares"
+  badgeText?: string; // Tag personalizada ex: "Mais barato que similares"
   status: StockStatus;
   images: string[];
   province: string;

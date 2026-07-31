@@ -404,31 +404,43 @@ export const AuthScreen: React.FC = () => {
                 </div>
               </div>
 
-              {/* Mode Switcher Tabs */}
-              <div className="grid grid-cols-2 bg-slate-900/90 p-1 rounded-2xl mb-6 border border-slate-700">
-                <button
-                  type="button"
-                  onClick={() => setAuthMode("LOGIN")}
-                  className={`py-2 text-xs font-bold rounded-xl transition-all ${
-                    authMode === "LOGIN"
-                      ? "bg-emerald-600 text-white shadow-md"
-                      : "text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  Entrar (Login)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAuthMode("REGISTER")}
-                  className={`py-2 text-xs font-bold rounded-xl transition-all ${
-                    authMode === "REGISTER"
-                      ? "bg-amber-600 text-white shadow-md"
-                      : "text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  Criar Conta (Cadastro)
-                </button>
-              </div>
+              {/* Mode Switcher Tabs (Only for non-ADMIN roles) */}
+              {selectedRole === "ADMIN" ? (
+                <div className="mb-5 p-3.5 bg-purple-950/80 border border-purple-500/40 rounded-2xl text-xs text-purple-200 flex items-center gap-2.5">
+                  <ShieldCheck className="w-5 h-5 text-amber-400 shrink-0" />
+                  <div>
+                    <span className="font-extrabold text-amber-300 block">Acesso de Administrador Restrito</span>
+                    <span className="text-[11px] text-purple-200/90">
+                      O cadastro de novos administradores está desativado. Apenas o número autorizado (<strong>863983206</strong>) possui permissão de acesso.
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 bg-slate-900/90 p-1 rounded-2xl mb-6 border border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setAuthMode("LOGIN")}
+                    className={`py-2 text-xs font-bold rounded-xl transition-all ${
+                      authMode === "LOGIN"
+                        ? "bg-emerald-600 text-white shadow-md"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    Entrar (Login)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAuthMode("REGISTER")}
+                    className={`py-2 text-xs font-bold rounded-xl transition-all ${
+                      authMode === "REGISTER"
+                        ? "bg-amber-600 text-white shadow-md"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    Criar Conta (Cadastro)
+                  </button>
+                </div>
+              )}
 
               {/* Error banner */}
               {loginError && (
@@ -484,7 +496,7 @@ export const AuthScreen: React.FC = () => {
                       <ArrowRight className="w-4 h-4" />
                     </button>
 
-                    {users.filter((u) => u.role === selectedRole).length > 0 && (
+                    {selectedRole !== "FARMER" && selectedRole !== "BUYER" && selectedRole !== "DRIVER" && users.filter((u) => u.role === selectedRole).length > 0 && (
                       <div className="pt-2 border-t border-slate-700/60 text-left">
                         <span className="text-[10px] font-bold text-slate-400 block mb-1.5 uppercase tracking-wider">
                           Contas Registadas ({selectedRole === "FARMER" ? "Agricultores" : selectedRole === "BUYER" ? "Compradores" : selectedRole === "DRIVER" ? "Transportadores" : "Admins"}):

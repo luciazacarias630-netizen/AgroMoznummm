@@ -513,7 +513,7 @@ export const BuyerMarketplace: React.FC<BuyerMarketplaceProps> = ({
         </div>
       </div>
 
-      {/* 3. PRODUCT GRID */}
+      {/* 3. PRODUCT GRID - ORGANIZED ALIBABA TOP DEALS MARKETPLACE LAYOUT */}
       {filteredProducts.length === 0 ? (
         <div className="bg-white rounded-3xl p-12 text-center border border-dashed border-slate-300">
           <ShoppingBag className="w-12 h-12 text-slate-300 mx-auto mb-3" />
@@ -523,150 +523,149 @@ export const BuyerMarketplace: React.FC<BuyerMarketplaceProps> = ({
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredProducts.map((p) => (
-            <div
-              key={p.id}
-              className="bg-white rounded-3xl overflow-hidden shadow-xs hover:shadow-xl border border-emerald-100/80 transition-all duration-300 flex flex-col group"
-            >
-              {/* Product Image & Badges */}
-              <div className="relative h-48 bg-slate-100 overflow-hidden">
-                <img
-                  src={p.images[0]}
-                  alt={p.name}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                />
-                <div className="absolute top-3 left-3 flex gap-2">
-                  <span className="px-2.5 py-1 bg-emerald-950/80 backdrop-blur-md text-amber-300 rounded-full text-[10px] font-bold">
-                    {p.category}
-                  </span>
-                </div>
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5 sm:gap-5">
+          {filteredProducts.map((p) => {
+            const { avg, count } = getProductReviewsInfo(p);
+            const farmerUser = users.find(
+              (u) => u.id === p.farmerId || u.name === p.farmerName
+            );
+            const isVerified = farmerUser?.isVerifiedFarmer ?? (p.farmerId === "user-farmer-default" || p.farmerId === "farmer-1");
 
-                <div className="absolute bottom-3 right-3">
-                  <span
-                    className={`px-2.5 py-1 rounded-full text-[10px] font-bold text-white shadow-md ${
-                      p.status === "Disponibile"
-                        ? "bg-emerald-600"
-                        : p.status === "Pouca quantidade"
-                        ? "bg-amber-600"
-                        : "bg-red-600"
-                    }`}
-                  >
-                    {p.status} ({p.availableQuantity} {p.unit})
-                  </span>
-                </div>
-              </div>
-
-              {/* Product Details */}
-              <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[11px] font-semibold text-emerald-800 flex items-center gap-1">
-                      <MapPin className="w-3.5 h-3.5 text-amber-600" /> {p.district}, {p.province}
+            return (
+              <div
+                key={p.id}
+                className="bg-white rounded-2xl overflow-hidden shadow-xs hover:shadow-xl border border-slate-200/90 transition-all duration-300 flex flex-col group p-2.5 sm:p-3.5 hover:-translate-y-1"
+              >
+                {/* 1. PRICE & MOQ HEADER (ALIBABA TOP DEALS LAYOUT) */}
+                <div className="flex items-baseline justify-between gap-1 mb-0.5">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-base sm:text-lg font-black text-slate-950 tracking-tight">
+                      {p.pricePerUnit.toLocaleString("pt-MZ")}{" "}
+                      <span className="text-xs font-black text-slate-800">MTn</span>
                     </span>
-                    <span className="text-xs text-slate-400">
-                      {new Date(p.createdAt).toLocaleDateString()}
+                  </div>
+                  <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wide shrink-0">
+                    MOQ: {p.minOrderQuantity || 1}
+                  </span>
+                </div>
+
+                {/* 2. PROMO / DISCOUNT BADGE HIGHLIGHT */}
+                <div className="flex items-center gap-1 text-[10.5px] font-bold text-red-600 mb-2 truncate">
+                  <span className="text-red-500 text-xs shrink-0">⚡</span>
+                  <span className="truncate">{p.badgeText || "Mais barato que os similares"}</span>
+                </div>
+
+                {/* 3. PRODUCT IMAGE CONTAINER WITH WATERMARK & DISCOUNT OVERLAYS */}
+                <div className="relative aspect-square w-full bg-slate-50 rounded-xl overflow-hidden border border-slate-100 mb-2 shadow-2xs">
+                  <img
+                    src={p.images[0]}
+                    alt={p.name}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  />
+
+                  {/* AgroMoz Fresh Brand Watermark Overlay Top Left */}
+                  <div className="absolute top-2 left-2 flex items-center gap-1 bg-white/90 backdrop-blur-md px-2 py-0.5 rounded-md shadow-2xs border border-slate-200/60">
+                    <span className="text-[9.5px] font-black text-emerald-800">🌱 AgroMoz</span>
+                  </div>
+
+                  {/* Discount percent badge top right */}
+                  <div className="absolute top-2 right-2">
+                    <span className="px-1.5 py-0.5 bg-orange-500 text-slate-950 font-black text-[9.5px] rounded-md shadow-2xs">
+                      -{p.discountPercent || 15}%
                     </span>
                   </div>
 
-                  <h3 className="text-base font-bold text-slate-900 group-hover:text-emerald-800 transition-colors line-clamp-1">
-                    {p.name}
-                  </h3>
+                  {/* Category tag bottom left */}
+                  <div className="absolute bottom-2 left-2">
+                    <span className="px-2 py-0.5 bg-slate-900/80 backdrop-blur-md text-amber-300 rounded-md text-[9px] font-extrabold">
+                      {p.category}
+                    </span>
+                  </div>
 
-                  {/* Rating & Review Summary Badge */}
-                  {(() => {
-                    const { avg, count } = getProductReviewsInfo(p);
-                    return (
-                      <button
-                        onClick={() => setSelectedReviewProduct(p)}
-                        className="mt-1 flex items-center gap-1.5 px-2.5 py-0.5 bg-amber-50 hover:bg-amber-100 border border-amber-200/80 text-amber-900 rounded-full transition-all text-[11px] font-bold"
-                        title="Ver avaliações dos consumidores no mercado"
-                      >
-                        <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
-                        <span>{avg.toFixed(1)}</span>
-                        <span className="text-[10px] text-amber-800/90 font-normal">
-                          {count > 0 ? `(${count} avaliações)` : "(Sem avaliações)"}
-                        </span>
-                      </button>
-                    );
-                  })()}
-
-                  <p className="text-xs text-slate-600 mt-1.5 line-clamp-2 leading-relaxed">
-                    {p.description}
-                  </p>
+                  {/* Stock availability status bottom right */}
+                  <div className="absolute bottom-2 right-2">
+                    <span
+                      className={`px-2 py-0.5 rounded-md text-[9px] font-black text-white shadow-xs ${
+                        p.status === "Disponibile"
+                          ? "bg-emerald-600"
+                          : p.status === "Pouca quantidade"
+                          ? "bg-amber-600"
+                          : "bg-red-600"
+                      }`}
+                    >
+                      {p.availableQuantity} {p.unit}
+                    </span>
+                  </div>
                 </div>
 
-                {/* Farmer Info Bar */}
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="relative">
+                {/* 4. PRODUCT TITLE (2 LINES CLAMP) */}
+                <h3 className="text-xs sm:text-sm font-extrabold text-slate-900 group-hover:text-emerald-800 transition-colors line-clamp-2 leading-snug mb-1.5 min-h-[32px]">
+                  {p.name}
+                </h3>
+
+                {/* 5. SALES VOLUME & RATING SUMMARY */}
+                <div className="flex items-center justify-between text-[10.5px] text-slate-500 mb-2 pb-1.5 border-b border-slate-100">
+                  <span className="font-semibold text-slate-600 truncate flex items-center gap-1">
+                    <MapPin className="w-3 h-3 text-amber-600 shrink-0" />
+                    {p.district}, {p.province}
+                  </span>
+                  <button
+                    onClick={() => setSelectedReviewProduct(p)}
+                    className="flex items-center gap-1 text-amber-600 font-extrabold hover:underline shrink-0"
+                    title="Ver avaliações"
+                  >
+                    <Star className="w-3 h-3 fill-amber-400 text-amber-500" />
+                    <span>{avg.toFixed(1)}</span>
+                    <span className="text-[9.5px] text-slate-400">({count})</span>
+                  </button>
+                </div>
+
+                {/* 6. FARMER IDENTITY & CREDENTIALS */}
+                <div className="flex items-center justify-between text-[10.5px] text-slate-700 bg-slate-50 p-2 rounded-xl border border-slate-200/60 mb-2.5">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <div className="relative shrink-0">
                       <img
                         src={p.farmerPhoto}
                         alt={p.farmerName}
-                        className="w-8 h-8 rounded-full object-cover border border-emerald-500"
+                        className="w-5 h-5 rounded-full object-cover border border-emerald-500"
                       />
                       <span
-                        className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white ${
+                        className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-white ${
                           p.farmerOnline ? "bg-emerald-500" : "bg-slate-400"
                         }`}
                       />
                     </div>
-                    <div>
-                      <div className="text-xs font-bold text-slate-800 flex items-center gap-1 flex-wrap">
-                        <span>{p.farmerName}</span>
-                        {(() => {
-                          const farmerUser = users.find(
-                            (u) => u.id === p.farmerId || u.name === p.farmerName
-                          );
-                          const isVerified = farmerUser?.isVerifiedFarmer ?? (p.farmerId === "user-farmer-default" || p.farmerId === "farmer-1");
-                          return <VerifiedFarmerBadge isVerified={isVerified} status={farmerUser?.verificationStatus} size="sm" />;
-                        })()}
-                      </div>
-                      <div className="text-[10px] text-emerald-700 font-medium">
-                        {p.farmerOnline ? "🟢 Online agora" : "⚪ Offline"}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="text-right">
-                    <span className="text-lg font-extrabold text-emerald-950 font-serif">
-                      {p.pricePerUnit} MT
-                    </span>
-                    <span className="text-[10px] text-slate-500 block">/ {p.unit}</span>
-                    {p.basePricePerUnit && (
-                      <span className="text-[9px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md font-semibold inline-block mt-0.5" title={`Preço do agricultor: ${p.basePricePerUnit} MT + 3% taxa AgroMoz`}>
-                        {p.basePricePerUnit} MT + 3%
-                      </span>
-                    )}
+                    <span className="font-extrabold text-slate-800 truncate">{p.farmerName}</span>
+                    <VerifiedFarmerBadge isVerified={isVerified} size="sm" />
                   </div>
                 </div>
 
-                {/* Action Buttons */}
-                <div className="grid grid-cols-2 gap-2 pt-1">
+                {/* 7. ACTION BUTTONS (CHAT & BUY M-PESA/E-MOLA) */}
+                <div className="grid grid-cols-2 gap-1.5 mt-auto">
                   <button
                     onClick={() => onOpenChatWith(p.farmerId, p.farmerName)}
-                    className="py-2 px-3 bg-slate-100 hover:bg-emerald-50 text-emerald-900 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all"
+                    className="py-2 px-2 bg-slate-100 hover:bg-emerald-50 text-emerald-900 rounded-xl text-[11px] font-extrabold flex items-center justify-center gap-1 transition-all cursor-pointer active:scale-95"
                   >
                     <MessageCircle className="w-3.5 h-3.5 text-emerald-700" />
-                    Chat
+                    <span>Chat</span>
                   </button>
 
                   <button
                     onClick={() => handleInitiatePurchase(p)}
                     disabled={p.status === "Esgotado"}
-                    className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all ${
+                    className={`py-2 px-2 rounded-xl text-[11px] font-black flex items-center justify-center gap-1 shadow-2xs transition-all cursor-pointer active:scale-95 ${
                       p.status === "Esgotado"
                         ? "bg-slate-200 text-slate-400 cursor-not-allowed"
                         : "bg-emerald-700 hover:bg-emerald-800 text-white shadow-emerald-800/20"
                     }`}
                   >
                     <ShoppingBag className="w-3.5 h-3.5 text-amber-300" />
-                    Comprar
+                    <span>Comprar</span>
                   </button>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
       </>
