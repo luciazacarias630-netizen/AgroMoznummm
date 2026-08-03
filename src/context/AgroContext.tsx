@@ -10,8 +10,12 @@ import {
   PaymentMethod,
   AppNotification,
   ProductReview,
+  DeliveryProposal,
 } from "../types";
 import { fcmService } from "../services/fcmService";
+import { crashlytics } from "../services/crashlyticsService";
+import { db } from "../firebase";
+import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot } from "firebase/firestore";
 
 interface AgroContextType {
   currentUser: UserProfile | null;
@@ -47,7 +51,15 @@ interface AgroContextType {
   updateOrderStatus: (orderId: string, status: Order["deliveryStatus"]) => void;
   assignDriverToOrder: (orderId: string, driverId: string, driverName: string, driverPhone: string) => void;
 
+  // Delivery Proposal / Bidding Actions
+  proposals: DeliveryProposal[];
+  submitDeliveryProposal: (transacaoId: string, valorProposto: number, mensagem?: string, tempoEstimado?: string) => DeliveryProposal;
+  acceptDeliveryProposal: (transacaoId: string, propostaId: string) => void;
+  rejectDeliveryProposal: (propostaId: string) => void;
+
   // Escrow & Payment Split Actions
+  confirmDeliveryByDriver: (orderId: string) => void;
+  confirmReceiptByBuyer: (orderId: string) => void;
   releaseEscrowPayment: (orderId: string, reason?: string) => void;
   refundEscrowPayment: (orderId: string, reason: string) => void;
 
@@ -284,6 +296,15 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return saved ? JSON.parse(saved) : [];
   });
 
+  const [proposals, setProposals] = useState<DeliveryProposal[]>(() => {
+    const saved = localStorage.getItem("agromoz_proposals");
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem("agromoz_proposals", JSON.stringify(proposals));
+  }, [proposals]);
+
   const [reviews, setReviews] = useState<ProductReview[]>(() => {
     const saved = localStorage.getItem("agromoz_reviews");
     if (saved) {
@@ -479,6 +500,62 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem("agromoz_app_notifications", JSON.stringify(appNotifications));
   }, [appNotifications]);
 
+  // Firestore Real-Time Cloud Database Sync Listeners
+  useEffect(() => {
+    if (!db) return;
+
+    const unsubProds = onSnapshot(collection(db, "products"), (snapshot) => {
+      if (!snapshot.empty) {
+        const items: Product[] = [];
+        snapshot.forEach((docSnap) => items.push(docSnap.data() as Product));
+        if (items.length > 0) setProducts(items);
+      }
+    }, (err) => console.log("Firestore products sync:", err));
+
+    const unsubOrders = onSnapshot(collection(db, "orders"), (snapshot) => {
+      if (!snapshot.empty) {
+        const items: Order[] = [];
+        snapshot.forEach((docSnap) => items.push(docSnap.data() as Order));
+        if (items.length > 0) setOrders(items);
+      }
+    }, (err) => console.log("Firestore orders sync:", err));
+
+    const unsubUsers = onSnapshot(collection(db, "users"), (snapshot) => {
+      if (!snapshot.empty) {
+        const items: UserProfile[] = [];
+        snapshot.forEach((docSnap) => items.push(docSnap.data() as UserProfile));
+        if (items.length > 0) setUsers(items);
+      }
+    }, (err) => console.log("Firestore users sync:", err));
+
+    const unsubMachambas = onSnapshot(collection(db, "machambas"), (snapshot) => {
+      if (!snapshot.empty) {
+        const items: Machamba[] = [];
+        snapshot.forEach((docSnap) => items.push(docSnap.data() as Machamba));
+        if (items.length > 0) setMachambas(items);
+      }
+    }, (err) => console.log("Firestore machambas sync:", err));
+
+    return () => {
+      unsubProds();
+      unsubOrders();
+      unsubUsers();
+      unsubMachambas();
+    };
+  }, []);
+
+  // Sync active user with Firebase Crashlytics
+  useEffect(() => {
+    if (currentUser) {
+      crashlytics.setUserIdentifier(currentUser.id, currentUser.role, currentUser.email);
+      crashlytics.setCustomKey("user_province", currentUser.province);
+      crashlytics.setCustomKey("user_district", currentUser.district);
+    } else {
+      crashlytics.setUserIdentifier(null);
+      crashlytics.clearCustomKeys();
+    }
+  }, [currentUser]);
+
   const pushNotification = ({
     title,
     message,
@@ -539,15 +616,17 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setActivePushToast((current) => (current?.id === newNotif.id ? null : current));
       }, 6000);
 
-      // Trigger Web Push Notification & FCM Chime Audio
-      fcmService.triggerFcmPush({
-        title,
-        body: message,
-        category,
-        targetRole,
-        targetUserId,
-        relatedId,
-      });
+      // Trigger Web Push Notification & FCM Chime Audio safely
+      fcmService
+        .triggerFcmPush({
+          title,
+          body: message,
+          category,
+          targetRole,
+          targetUserId,
+          relatedId,
+        })
+        .catch((err) => console.warn("FCM Push error ignored:", err));
     }
   };
 
@@ -593,94 +672,121 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }).length;
 
   const loginUser = (phoneOrEmail: string, pass: string, role: string): UserProfile | null => {
-    const rawQuery = phoneOrEmail.trim();
-    const cleanDigits = rawQuery.replace(/\D/g, "");
-    const cleanEmail = rawQuery.toLowerCase();
+    try {
+      const rawQuery = phoneOrEmail.trim();
+      const cleanDigits = rawQuery.replace(/\D/g, "");
+      const cleanEmail = rawQuery.toLowerCase();
 
-    const found = users.find((u) => {
-      const uDigits = u.phone.replace(/\D/g, "");
-      const matchesPhone = cleanDigits.length >= 6 && (uDigits.includes(cleanDigits) || cleanDigits.includes(uDigits));
-      const matchesEmail = Boolean(u.email && u.email.toLowerCase().trim() === cleanEmail);
-      return (matchesPhone || matchesEmail) && u.role === role;
-    });
+      const found = users.find((u) => {
+        const uDigits = u.phone.replace(/\D/g, "");
+        const matchesPhone = cleanDigits.length >= 6 && (uDigits.includes(cleanDigits) || cleanDigits.includes(uDigits));
+        const matchesEmail = Boolean(u.email && u.email.toLowerCase().trim() === cleanEmail);
+        return (matchesPhone || matchesEmail) && u.role === role;
+      });
 
-    if (found) {
-      if (found.password && pass && found.password !== pass) {
-        return null;
+      if (found) {
+        if (found.password && pass && found.password !== pass) {
+          crashlytics.logAuthError(
+            new Error("Tentativa de login com palavra-passe incorreta"),
+            "login",
+            { phoneOrEmail, role, userId: found.id }
+          );
+          return null;
+        }
+        const updated = { ...found, online: true };
+        setCurrentUser(updated);
+        setUsers((prev) => prev.map((u) => (u.id === found.id ? updated : u)));
+        addNotification(`Sessão iniciada como ${updated.name} (${updated.role})`);
+        return updated;
       }
-      const updated = { ...found, online: true };
-      setCurrentUser(updated);
-      setUsers((prev) => prev.map((u) => (u.id === found.id ? updated : u)));
-      addNotification(`Sessão iniciada como ${updated.name} (${updated.role})`);
-      return updated;
-    }
 
-    return null;
+      crashlytics.logAuthError(
+        new Error("Conta não encontrada ou tipo de perfil incorreto"),
+        "login",
+        { phoneOrEmail, role }
+      );
+      return null;
+    } catch (err) {
+      crashlytics.logAuthError(err, "login", { phoneOrEmail, role });
+      return null;
+    }
   };
 
   const registerUser = (newUser: Partial<UserProfile>): UserProfile => {
-    const rawPhone = (newUser.phone || "").trim();
-    const cleanDigits = rawPhone.replace(/\D/g, "");
+    try {
+      const rawPhone = (newUser.phone || "").trim();
+      const cleanDigits = rawPhone.replace(/\D/g, "");
 
-    if (cleanDigits.length >= 6) {
-      const existingUser = users.find((u) => u.phone.replace(/\D/g, "") === cleanDigits);
-      if (existingUser) {
-        const roleLabel =
-          existingUser.role === "FARMER"
-            ? "Agricultor"
-            : existingUser.role === "BUYER"
-            ? "Comprador"
-            : existingUser.role === "DRIVER"
-            ? "Transportador"
-            : "Administrador";
-        throw new Error(
-          `O número de telefone (${rawPhone}) já está registado na AgroMoz como ${roleLabel} (${existingUser.name}). Por favor, aceda ao separador 'Entrar (Login)' para aceder à sua conta.`
-        );
+      if (cleanDigits.length >= 6) {
+        const existingUser = users.find((u) => u.phone.replace(/\D/g, "") === cleanDigits);
+        if (existingUser) {
+          const roleLabel =
+            existingUser.role === "FARMER"
+              ? "Agricultor"
+              : existingUser.role === "BUYER"
+              ? "Comprador"
+              : existingUser.role === "DRIVER"
+              ? "Transportador"
+              : "Administrador";
+          const err = new Error(
+            `O número de telefone (${rawPhone}) já está registado na AgroMoz como ${roleLabel} (${existingUser.name}). Por favor, aceda ao separador 'Entrar (Login)' para aceder à sua conta.`
+          );
+          crashlytics.logAuthError(err, "register", { phone: rawPhone, role: existingUser.role });
+          throw err;
+        }
       }
+
+      const id = `user-${Date.now()}`;
+      const userRole = newUser.role || "BUYER";
+      if (userRole === "ADMIN") {
+        const err = new Error("Não é possível registar novos Administradores. O acesso à área administrativa é reservado exclusivamente ao número registado (863983206).");
+        crashlytics.logAuthError(err, "register", { phone: rawPhone, role: userRole });
+        throw err;
+      }
+      
+      const user: UserProfile = {
+        id,
+        name: newUser.name || "Utilizador AgroMoz",
+        role: userRole,
+        phone: rawPhone || "840000000",
+        email: newUser.email || "",
+        password: newUser.password || "",
+        photoUrl:
+          newUser.photoUrl ||
+          "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200",
+        province: newUser.province || "Maputo Província",
+        district: newUser.district || "Marracuene",
+        address: newUser.address || "",
+        localidade: newUser.localidade || "",
+        online: true,
+        rating: 5.0,
+        totalRatings: 0,
+        isApproved: userRole !== "DRIVER", // drivers need admin approval
+        membershipFeePaid: true, // Free registration - no 50 MT fee required
+        membershipFeeStatus: "Aprovado",
+        farmName: newUser.farmName || "",
+        farmArea: newUser.farmArea || "",
+        cropsGrown: newUser.cropsGrown || [],
+        bio: newUser.bio || "",
+        vehicleType: newUser.vehicleType,
+        licensePlate: newUser.licensePlate,
+      };
+
+      setUsers((prev) => [...prev, user]);
+      setCurrentUser(user);
+      if (db) {
+        setDoc(doc(db, "users", user.id), user).catch((e) => {
+          crashlytics.logAuthError(e, "register", { action: "firestore_sync", userId: user.id });
+        });
+      }
+
+      addNotification(`Conta criada com sucesso! Bem-vindo à AgroMoz, ${user.name}.`);
+
+      return user;
+    } catch (err) {
+      crashlytics.logAuthError(err, "register", { newUserPhone: newUser.phone, role: newUser.role });
+      throw err;
     }
-
-    const id = `user-${Date.now()}`;
-    const userRole = newUser.role || "BUYER";
-    if (userRole === "ADMIN") {
-      throw new Error("Não é possível registar novos Administradores. O acesso à área administrativa é reservado exclusivamente ao número registado (863983206).");
-    }
-    
-    // Farmer membership fee logic
-    const isFarmer = userRole === "FARMER";
-    const user: UserProfile = {
-      id,
-      name: newUser.name || "Utilizador AgroMoz",
-      role: userRole,
-      phone: rawPhone || "840000000",
-      email: newUser.email || "",
-      password: newUser.password || "",
-      photoUrl:
-        newUser.photoUrl ||
-        "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200",
-      province: newUser.province || "Maputo Província",
-      district: newUser.district || "Marracuene",
-      address: newUser.address || "",
-      localidade: newUser.localidade || "",
-      online: true,
-      rating: 5.0,
-      totalRatings: 0,
-      isApproved: userRole !== "DRIVER", // drivers need admin approval
-      membershipFeePaid: true, // Free registration - no 50 MT fee required
-      membershipFeeStatus: "Aprovado",
-      farmName: newUser.farmName || "",
-      farmArea: newUser.farmArea || "",
-      cropsGrown: newUser.cropsGrown || [],
-      bio: newUser.bio || "",
-      vehicleType: newUser.vehicleType,
-      licensePlate: newUser.licensePlate,
-    };
-
-    setUsers((prev) => [...prev, user]);
-    setCurrentUser(user);
-
-    addNotification(`Conta criada com sucesso! Bem-vindo à AgroMoz, ${user.name}.`);
-
-    return user;
   };
 
   const logoutUser = () => {
@@ -697,6 +803,9 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const updated = { ...currentUser, ...updates };
     setCurrentUser(updated);
     setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updated : u)));
+    if (db) {
+      setDoc(doc(db, "users", updated.id), updated).catch((e) => console.log("Firestore updateUserProfile error:", e));
+    }
 
     pushNotification({
       title: "👤 Perfil Atualizado",
@@ -725,63 +834,96 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const addProduct = (product: Partial<Product>): Product => {
-    if (!currentUser || currentUser.role !== "FARMER") {
-      throw new Error("Apenas agricultores registados podem publicar produtos.");
+    try {
+      if (!currentUser || currentUser.role !== "FARMER") {
+        const err = new Error("Apenas agricultores registados podem publicar produtos.");
+        crashlytics.logProductError(err, "publish", { userId: currentUser?.id });
+        throw err;
+      }
+
+      if (!currentUser.isVerifiedFarmer && currentUser.verificationStatus !== "Aprovado") {
+        const err = new Error("🔒 Verificação de Idade (18+) Obrigatória: Deve concluir a verificação do B.I e comprovar ser maior de 18 anos antes de publicar produtos na plataforma AgroMoz.");
+        crashlytics.logProductError(err, "publish", { userId: currentUser.id, verificationStatus: currentUser.verificationStatus });
+        throw err;
+      }
+
+      const basePrice = Number(product.basePricePerUnit) || Number(product.pricePerUnit) || 100;
+      const margin = Math.round(basePrice * 0.03 * 100) / 100;
+      const finalPrice = product.pricePerUnit || (basePrice + margin);
+
+      const newProd: Product = {
+        id: `prod-${Date.now()}`,
+        farmerId: currentUser.id,
+        farmerName: currentUser.name,
+        farmerPhone: currentUser.phone,
+        farmerPhoto: currentUser.photoUrl,
+        farmerOnline: currentUser.online,
+        farmerRating: currentUser.rating || 5.0,
+        name: product.name || "Produto Agrícola",
+        category: product.category || "Hortaliças",
+        description: product.description || "",
+        basePricePerUnit: basePrice,
+        agroMozMargin: margin,
+        pricePerUnit: finalPrice,
+        termsAccepted: product.termsAccepted ?? true,
+        unit: product.unit || "kg",
+        availableQuantity: Number(product.availableQuantity) || 10,
+        status: Number(product.availableQuantity) > 10 ? "Disponibile" : Number(product.availableQuantity) > 0 ? "Pouca quantidade" : "Esgotado",
+        images: product.images?.length ? product.images : ["https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=600"],
+        province: currentUser.province,
+        district: currentUser.district,
+        createdAt: new Date().toISOString(),
+      };
+
+      setProducts((prev) => [newProd, ...prev]);
+      if (db) {
+        setDoc(doc(db, "products", newProd.id), newProd).catch((e) => {
+          crashlytics.logProductError(e, "publish", { action: "firestore_sync", productId: newProd.id });
+        });
+      }
+      addNotification(`Novo produto publicado em tempo real: ${newProd.name}`);
+      return newProd;
+    } catch (err) {
+      crashlytics.logProductError(err, "publish", { productName: product.name });
+      throw err;
     }
-
-    if (!currentUser.isVerifiedFarmer && currentUser.verificationStatus !== "Aprovado") {
-      throw new Error("🔒 Verificação de Idade (18+) Obrigatória: Deve concluir a verificação do B.I e comprovar ser maior de 18 anos antes de publicar produtos na plataforma AgroMoz.");
-    }
-
-    const basePrice = Number(product.basePricePerUnit) || Number(product.pricePerUnit) || 100;
-    const margin = Math.round(basePrice * 0.03 * 100) / 100;
-    const finalPrice = product.pricePerUnit || (basePrice + margin);
-
-    const newProd: Product = {
-      id: `prod-${Date.now()}`,
-      farmerId: currentUser.id,
-      farmerName: currentUser.name,
-      farmerPhone: currentUser.phone,
-      farmerPhoto: currentUser.photoUrl,
-      farmerOnline: currentUser.online,
-      farmerRating: currentUser.rating || 5.0,
-      name: product.name || "Produto Agrícola",
-      category: product.category || "Hortaliças",
-      description: product.description || "",
-      basePricePerUnit: basePrice,
-      agroMozMargin: margin,
-      pricePerUnit: finalPrice,
-      termsAccepted: product.termsAccepted ?? true,
-      unit: product.unit || "kg",
-      availableQuantity: Number(product.availableQuantity) || 10,
-      status: Number(product.availableQuantity) > 10 ? "Disponibile" : Number(product.availableQuantity) > 0 ? "Pouca quantidade" : "Esgotado",
-      images: product.images?.length ? product.images : ["https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=600"],
-      province: currentUser.province,
-      district: currentUser.district,
-      createdAt: new Date().toISOString(),
-    };
-
-    setProducts((prev) => [newProd, ...prev]);
-    addNotification(`Novo produto publicado em tempo real: ${newProd.name}`);
-    return newProd;
   };
 
   const updateProduct = (id: string, updatedFields: Partial<Product>) => {
-    setProducts((prev) =>
-      prev.map((p) => {
-        if (p.id === id) {
-          const qty = updatedFields.availableQuantity !== undefined ? updatedFields.availableQuantity : p.availableQuantity;
-          const status = qty > 10 ? "Disponibile" : qty > 0 ? "Pouca quantidade" : "Esgotado";
-          return { ...p, ...updatedFields, availableQuantity: qty, status };
-        }
-        return p;
-      })
-    );
+    try {
+      setProducts((prev) =>
+        prev.map((p) => {
+          if (p.id === id) {
+            const qty = updatedFields.availableQuantity !== undefined ? updatedFields.availableQuantity : p.availableQuantity;
+            const status = qty > 10 ? "Disponibile" : qty > 0 ? "Pouca quantidade" : "Esgotado";
+            const updated = { ...p, ...updatedFields, availableQuantity: qty, status };
+            if (db) {
+              setDoc(doc(db, "products", id), updated).catch((e) => {
+                crashlytics.logProductError(e, "update", { action: "firestore_sync", productId: id });
+              });
+            }
+            return updated;
+          }
+          return p;
+        })
+      );
+    } catch (err) {
+      crashlytics.logProductError(err, "update", { productId: id });
+    }
   };
 
   const deleteProduct = (id: string) => {
-    setProducts((prev) => prev.filter((p) => p.id !== id));
-    addNotification("Produto removido do mercado.");
+    try {
+      setProducts((prev) => prev.filter((p) => p.id !== id));
+      if (db) {
+        deleteDoc(doc(db, "products", id)).catch((e) => {
+          crashlytics.logProductError(e, "delete", { action: "firestore_sync", productId: id });
+        });
+      }
+      addNotification("Produto removido do mercado.");
+    } catch (err) {
+      crashlytics.logProductError(err, "delete", { productId: id });
+    }
   };
 
   const addProductReview = (reviewData: {
@@ -838,6 +980,9 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     setMachambas((prev) => [newM, ...prev]);
+    if (db) {
+      setDoc(doc(db, "machambas", newM.id), newM).catch((e) => console.log("Firestore addMachamba error:", e));
+    }
     addNotification(`Nova Machamba registada: ${newM.name}`);
     return newM;
   };
@@ -890,6 +1035,11 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
       farmerNetAmount,
       totalAmount,
       deliveryFee,
+      valorProduto: subtotal,
+      valorTransporte: deliveryFee,
+      estadoPagamentoVendedor: "pendente",
+      estadoPagamentoTransportador: "pendente",
+      estado: "aguardando_propostas",
       paymentMethod: orderData.paymentMethod || "M-Pesa",
       paymentStatus: "Pendente", // Held in AgroMoz Escrow Account
       escrowStatus: "Pendente",
@@ -900,6 +1050,9 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     setOrders((prev) => [newOrder, ...prev]);
+    if (db) {
+      setDoc(doc(db, "orders", newOrder.id), newOrder).catch((e) => console.log("Firestore createOrder error:", e));
+    }
 
     // Update stock in real-time
     if (orderData.productId) {
@@ -971,6 +1124,100 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return newOrder;
   };
 
+  // Confirmação de Entrega pelo Transportador (Passo 5 da Regra de Custódia)
+  const confirmDeliveryByDriver = (orderId: string) => {
+    let affectedOrder: Order | undefined;
+    const nowIso = new Date().toISOString();
+
+    setOrders((prev) =>
+      prev.map((o) => {
+        if (o.id === orderId) {
+          affectedOrder = {
+            ...o,
+            estado: "entrega_confirmada_transportador",
+            deliveryStatus: "Entregue pelo transportador (Aguardando confirmação do comprador)",
+            transportadorConfirmouEm: nowIso,
+            updatedAt: nowIso,
+          };
+          return affectedOrder;
+        }
+        return o;
+      })
+    );
+
+    if (db) {
+      updateDoc(doc(db, "orders", orderId), {
+        estado: "entrega_confirmada_transportador",
+        deliveryStatus: "Entregue pelo transportador (Aguardando confirmação do comprador)",
+        transportadorConfirmouEm: nowIso,
+        updatedAt: nowIso,
+      }).catch((e) => console.log("Firestore confirmDeliveryByDriver error:", e));
+
+      updateDoc(doc(db, "transacoes", orderId), {
+        estado: "entrega_confirmada_transportador",
+        deliveryStatus: "Entregue pelo transportador (Aguardando confirmação do comprador)",
+        transportadorConfirmouEm: nowIso,
+        updatedAt: nowIso,
+      }).catch((e) => console.log("Firestore confirmDeliveryByDriver transacoes error:", e));
+    }
+
+    const target = affectedOrder || orders.find((o) => o.id === orderId);
+    if (target) {
+      pushNotification({
+        title: "📦 Transportador Confirmou Entrega!",
+        message: `O motorista ${target.driverName || "do frete"} confirmou que entregou a sua encomeda de ${target.productName}. Por favor, confirme o recebimento para libertar os pagamentos em custódia.`,
+        type: "ORDER",
+        category: "PEDIDO",
+        targetRole: "BUYER",
+        targetUserId: target.buyerId,
+        relatedId: orderId,
+      });
+    }
+  };
+
+  // Confirmação de Recebimento pelo Comprador (Passo 6 da Regra de Custódia — Liberta Pagamentos)
+  const confirmReceiptByBuyer = (orderId: string) => {
+    const target = orders.find((o) => o.id === orderId);
+    if (!target) return;
+
+    const nowIso = new Date().toISOString();
+
+    // Atualiza estado de dupla confirmação
+    setOrders((prev) =>
+      prev.map((o) => {
+        if (o.id === orderId) {
+          return {
+            ...o,
+            compradorConfirmouEm: nowIso,
+            pagamentoLiberadoVendedor: true,
+            pagamentoLiberadoTransportador: true,
+            pagamentoLiberadoEm: nowIso,
+          };
+        }
+        return o;
+      })
+    );
+
+    if (db) {
+      updateDoc(doc(db, "orders", orderId), {
+        compradorConfirmouEm: nowIso,
+        pagamentoLiberadoVendedor: true,
+        pagamentoLiberadoTransportador: true,
+        pagamentoLiberadoEm: nowIso,
+      }).catch((e) => console.log("Firestore confirmReceiptByBuyer error:", e));
+
+      updateDoc(doc(db, "transacoes", orderId), {
+        compradorConfirmouEm: nowIso,
+        pagamentoLiberadoVendedor: true,
+        pagamentoLiberadoTransportador: true,
+        pagamentoLiberadoEm: nowIso,
+      }).catch((e) => console.log("Firestore confirmReceiptByBuyer transacoes error:", e));
+    }
+
+    // Chama o gatilho de libertação de fundos em custódia para vendedor e transportador
+    releaseEscrowPayment(orderId, "Dupla confirmação concluída: Comprador e Transportador");
+  };
+
   const releaseEscrowPayment = (orderId: string, reason = "Confirmação de Entrega") => {
     let orderToRelease: Order | undefined;
 
@@ -982,6 +1229,9 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
             escrowStatus: "Liberado",
             paymentStatus: "Pago",
             deliveryStatus: "Entregue",
+            estadoPagamentoVendedor: "pago",
+            estadoPagamentoTransportador: "pago",
+            estado: "concluido",
             releasedAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           };
@@ -1131,7 +1381,8 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
       prev.map((o) => {
         if (o.id === orderId) {
           affectedOrder = o;
-          return { ...o, deliveryStatus: status, updatedAt: new Date().toISOString() };
+          const estado = status === "Entregador a caminho" || status === "Preparando encomenda" ? "em_transito" : o.estado || "pendente";
+          return { ...o, deliveryStatus: status, estado, updatedAt: new Date().toISOString() };
         }
         return o;
       })
@@ -1207,6 +1458,133 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Submeter Proposta de Frete por um Transportador
+  const submitDeliveryProposal = (
+    transacaoId: string,
+    valorProposto: number,
+    mensagem?: string,
+    tempoEstimado?: string
+  ): DeliveryProposal => {
+    const driver = currentUser || {
+      id: "driver-default",
+      name: "Transportador AgroMoz",
+      phone: "840000000",
+      role: "DRIVER",
+      vehicleType: "Carrinha",
+    };
+
+    const newProposal: DeliveryProposal = {
+      id: `prop-${Date.now()}`,
+      transacaoId,
+      transportadorId: driver.id,
+      driverName: driver.name,
+      driverPhone: driver.phone,
+      driverRating: 4.9,
+      vehicleType: driver.vehicleType || "Carrinha",
+      valorProposto,
+      mensagem: mensagem || "Disponível para recolha imediata na machamba",
+      tempoEstimado: tempoEstimado || "Entrega estimada em 24h",
+      estado: "pendente",
+      criadoEm: new Date().toISOString(),
+    };
+
+    setProposals((prev) => [newProposal, ...prev]);
+
+    if (db) {
+      setDoc(
+        doc(db, "transacoes", transacaoId, "propostas", newProposal.id),
+        newProposal
+      ).catch((e) => console.log("Firestore submitProposal error:", e));
+    }
+
+    // Notificar o comprador de que há uma nova proposta
+    const targetOrder = orders.find((o) => o.id === transacaoId);
+    if (targetOrder) {
+      pushNotification({
+        title: `🚚 Nova Proposta de Transporte!`,
+        message: `O motorista ${driver.name} propôs ${valorProposto} MT para entregar a sua encomenda de ${targetOrder.productName}.`,
+        type: "ORDER",
+        category: "PEDIDO",
+        targetRole: "BUYER",
+        targetUserId: targetOrder.buyerId,
+        relatedId: transacaoId,
+      });
+    }
+
+    return newProposal;
+  };
+
+  // Aceitar Proposta de Frete e Rejeitar as Restantes
+  const acceptDeliveryProposal = (transacaoId: string, propostaId: string) => {
+    const winnerProp = proposals.find((p) => p.id === propostaId);
+    if (!winnerProp) return;
+
+    // 1. Atualizar estados das propostas: a escolhida fica "aceite", as outras do mesmo pedido passam a "rejeitada"
+    setProposals((prev) =>
+      prev.map((p) => {
+        if (p.transacaoId === transacaoId) {
+          return p.id === propostaId ? { ...p, estado: "aceite" } : { ...p, estado: "rejeitada" };
+        }
+        return p;
+      })
+    );
+
+    // 2. Atualizar encomenda com o transportador aceite e o valor de frete definido
+    let targetOrder: Order | undefined;
+    setOrders((prev) =>
+      prev.map((o) => {
+        if (o.id === transacaoId) {
+          targetOrder = {
+            ...o,
+            driverId: winnerProp.transportadorId,
+            driverName: winnerProp.driverName,
+            driverPhone: winnerProp.driverPhone,
+            valorTransporte: winnerProp.valorProposto,
+            deliveryFee: winnerProp.valorProposto,
+            totalAmount: o.subtotal + winnerProp.valorProposto,
+            estado: "aguardando_pagamento",
+            deliveryStatus: "Aguardando pagamento do comprador",
+            updatedAt: new Date().toISOString(),
+          };
+          return targetOrder;
+        }
+        return o;
+      })
+    );
+
+    // 3. Notificar o Transportador Vencedor
+    pushNotification({
+      title: `🎉 Proposta Aceite!`,
+      message: `A sua proposta de ${winnerProp.valorProposto} MT para o pedido #${transacaoId} foi aceite pelo comprador!`,
+      type: "ORDER",
+      category: "PEDIDO",
+      targetRole: "DRIVER",
+      targetUserId: winnerProp.transportadorId,
+      relatedId: transacaoId,
+    });
+
+    // 4. Notificar os outros transportadores cujas propostas caducaram / foram rejeitadas
+    const otherProposals = proposals.filter((p) => p.transacaoId === transacaoId && p.id !== propostaId);
+    otherProposals.forEach((p) => {
+      pushNotification({
+        title: `ℹ️ Proposta Não Selecionada`,
+        message: `A proposta para o frete da encomenda #${transacaoId} foi encerrada pois outra proposta foi selecionada.`,
+        type: "ORDER",
+        category: "PEDIDO",
+        targetRole: "DRIVER",
+        targetUserId: p.transportadorId,
+        relatedId: transacaoId,
+      });
+    });
+  };
+
+  // Rejeitar Proposta de Frete
+  const rejectDeliveryProposal = (propostaId: string) => {
+    setProposals((prev) =>
+      prev.map((p) => (p.id === propostaId ? { ...p, estado: "rejeitada" } : p))
+    );
+  };
+
   const updateDriverLocation = (orderId: string, location: { lat: number; lng: number }) => {
     setOrders((prev) =>
       prev.map((o) =>
@@ -1237,6 +1615,9 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     setChats((prev) => [...prev, msg]);
+    if (db) {
+      setDoc(doc(db, "messages", msg.id), msg).catch((e) => console.log("Firestore sendMessage error:", e));
+    }
 
     // Push notification to Receiver
     pushNotification({
@@ -1438,7 +1819,13 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createOrder,
         updateOrderStatus,
         assignDriverToOrder,
+        proposals,
+        submitDeliveryProposal,
+        acceptDeliveryProposal,
+        rejectDeliveryProposal,
         updateDriverLocation,
+        confirmDeliveryByDriver,
+        confirmReceiptByBuyer,
         releaseEscrowPayment,
         refundEscrowPayment,
         sendMessage,

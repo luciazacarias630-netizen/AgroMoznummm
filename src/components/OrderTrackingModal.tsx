@@ -26,8 +26,20 @@ interface OrderTrackingModalProps {
 }
 
 export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ orderId, onClose }) => {
-  const { orders, releaseEscrowPayment, currentUser, reviews, addProductReview } = useAgro();
+  const {
+    orders,
+    proposals,
+    acceptDeliveryProposal,
+    confirmReceiptByBuyer,
+    releaseEscrowPayment,
+    currentUser,
+    reviews,
+    addProductReview,
+  } = useAgro();
   const order = orders.find((o) => o.id === orderId);
+
+  // Proposals for this order
+  const orderProposals = proposals.filter((p) => p.transacaoId === orderId);
 
   // Simulated GPS movement of driver on map
   const [driverPos, setDriverPos] = useState({ lat: -25.80, lng: 32.60 });
@@ -156,6 +168,73 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ orderId,
             </div>
           </div>
 
+          {/* PROPOSTAS DE FRETE RECEBIDAS DOS TRANSPORTADORES */}
+          {orderProposals.length > 0 && (
+            <div className="bg-amber-950/60 p-3.5 rounded-2xl border border-amber-800/80 space-y-3 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-extrabold text-amber-300 flex items-center gap-1.5">
+                  <Truck className="w-4 h-4 text-amber-400" />
+                  Propostas de Transporte ({orderProposals.length})
+                </span>
+                <span className="text-[10px] text-amber-200 bg-amber-900/60 px-2 py-0.5 rounded-full font-bold">
+                  Escolha do Comprador
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                {orderProposals.map((prop) => (
+                  <div
+                    key={prop.id}
+                    className="p-3 bg-slate-800/90 rounded-xl border border-amber-700/50 space-y-2"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h5 className="font-extrabold text-white text-xs">{prop.driverName || "Motorista AgroMoz"}</h5>
+                        <p className="text-[10px] text-slate-400">{prop.vehicleType} &bull; Tel: {prop.driverPhone}</p>
+                        <p className="text-[10px] text-amber-300 mt-0.5">{prop.tempoEstimado}</p>
+                      </div>
+
+                      <div className="text-right">
+                        <span className="font-black text-amber-400 text-sm block">{prop.valorProposto} MT</span>
+                        <span
+                          className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md ${
+                            prop.estado === "aceite"
+                              ? "bg-emerald-500/20 text-emerald-300"
+                              : prop.estado === "rejeitada"
+                              ? "bg-rose-500/20 text-rose-300"
+                              : "bg-amber-500/20 text-amber-300"
+                          }`}
+                        >
+                          {prop.estado === "aceite"
+                            ? "ACEITE ✅"
+                            : prop.estado === "rejeitada"
+                            ? "REJEITADA"
+                            : "PENDENTE"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {prop.mensagem && (
+                      <p className="text-[11px] text-slate-300 italic bg-slate-900/60 p-2 rounded-lg border border-slate-700/50">
+                        "{prop.mensagem}"
+                      </p>
+                    )}
+
+                    {prop.estado === "pendente" && (
+                      <button
+                        onClick={() => acceptDeliveryProposal(order.id, prop.id)}
+                        className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-lg text-xs flex items-center justify-center gap-1.5 shadow-md transition-all cursor-pointer active:scale-95"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5 text-amber-300" />
+                        Aceitar esta Proposta ({prop.valorProposto} MT)
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Driver Details */}
           {order.driverName && (
             <div className="bg-slate-800/90 p-3.5 rounded-2xl border border-slate-700 flex items-center justify-between text-xs">
@@ -178,43 +257,90 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ orderId,
             </div>
           )}
 
-          {/* Escrow Payment Info & Delivery Confirmation */}
+          {/* Escrow Payment Info & Double Confirmation Workflow */}
           <div className="p-3.5 bg-emerald-950/60 rounded-2xl border border-emerald-800/80 space-y-3 text-xs">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
                 <div>
-                  <span className="font-bold text-white block">Custódia AgroMoz</span>
+                  <span className="font-bold text-white block">Custódia AgroMoz (Dupla Confirmação)</span>
                   <span className="text-[10px] text-slate-300">
-                    Total: {order.subtotal || order.totalAmount} MT
+                    Produto: {order.subtotal || order.valorProduto} MT • Frete: {order.deliveryFee || order.valorTransporte || 0} MT
                   </span>
                 </div>
               </div>
 
               <span
                 className={`px-2.5 py-0.5 rounded-full font-extrabold text-[10px] ${
-                  order.escrowStatus === "Liberado"
+                  order.escrowStatus === "Liberado" || order.estado === "concluido"
                     ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
                     : order.escrowStatus === "Reembolsado"
                     ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
                     : "bg-amber-500/20 text-amber-300 border border-amber-500/30"
                 }`}
               >
-                {order.escrowStatus === "Liberado"
-                  ? "✅ Pago Liberado"
+                {order.escrowStatus === "Liberado" || order.estado === "concluido"
+                  ? "✅ Pagamentos Liberados"
                   : order.escrowStatus === "Reembolsado"
                   ? "❌ Reembolsado"
-                  : "⏳ Retido em Custódia"}
+                  : "⏳ Retido na Conta Custódia"}
               </span>
             </div>
 
+            {/* STATUS DAS 2 CONFIRMAÇÕES */}
+            <div className="grid grid-cols-2 gap-2 p-2.5 bg-slate-900/80 rounded-xl border border-slate-700/60 text-[11px]">
+              <div className="space-y-0.5">
+                <span className="text-slate-400 block text-[10px]">1. Transportador:</span>
+                <span
+                  className={`font-extrabold block ${
+                    order.transportadorConfirmouEm
+                      ? "text-emerald-400"
+                      : "text-amber-400 italic"
+                  }`}
+                >
+                  {order.transportadorConfirmouEm
+                    ? "✓ Entregou o produto"
+                    : "⏳ Em transporte..."}
+                </span>
+              </div>
+
+              <div className="space-y-0.5">
+                <span className="text-slate-400 block text-[10px]">2. Comprador:</span>
+                <span
+                  className={`font-extrabold block ${
+                    order.compradorConfirmouEm || order.escrowStatus === "Liberado"
+                      ? "text-emerald-400"
+                      : "text-amber-400 italic"
+                  }`}
+                >
+                  {order.compradorConfirmouEm || order.escrowStatus === "Liberado"
+                    ? "✓ Confirmou recebimento"
+                    : "⏳ Aguardando confirmação"}
+                </span>
+              </div>
+            </div>
+
+            {/* AVISO QUANDO O TRANSPORTADOR JÁ CONFIRMOU A ENTREGA */}
+            {order.estado === "entrega_confirmada_transportador" && order.escrowStatus === "Pendente" && (
+              <div className="p-3 bg-amber-500/20 border border-amber-500/40 rounded-xl text-amber-200 text-xs space-y-1">
+                <p className="font-extrabold flex items-center gap-1.5 text-amber-300">
+                  <Truck className="w-4 h-4 text-amber-400" />
+                  O Transportador confirmou que entregou a encomenda!
+                </p>
+                <p className="text-[11px] text-amber-200/90">
+                  Por favor, confirme se recebeu o produto em boas condições para autorizar a libertação imediata dos pagamentos ao vendedor e ao transportador.
+                </p>
+              </div>
+            )}
+
+            {/* BOTÃO DE CONFIRMAÇÃO DO COMPRADOR */}
             {order.escrowStatus === "Pendente" && (currentUser?.role === "BUYER" || currentUser?.role === "ADMIN" || currentUser?.id === order.buyerId) && (
               <button
-                onClick={() => releaseEscrowPayment(order.id, "Confirmado pelo Comprador")}
+                onClick={() => confirmReceiptByBuyer(order.id)}
                 className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-xl shadow-md flex items-center justify-center gap-2 transition-all text-xs cursor-pointer active:scale-95"
               >
                 <CheckCircle2 className="w-4 h-4 text-amber-300" />
-                Confirmar Entrega & Libertar {order.farmerNetAmount || Math.round((order.subtotal || order.totalAmount) * 0.95)} MT
+                Confirmar Recebimento do Produto & Libertar Pagamentos (Dupla Confirmação)
               </button>
             )}
           </div>

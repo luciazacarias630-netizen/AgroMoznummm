@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useAgro } from "../context/AgroContext";
 import { VerifiedFarmerBadge } from "./VerifiedFarmerBadge";
+import { AdminAnalyticsDashboard } from "./AdminAnalyticsDashboard";
 import {
   ShieldCheck,
   Users,
@@ -18,6 +19,8 @@ import {
   Phone,
   Download,
   FileSpreadsheet,
+  BarChart3,
+  SlidersHorizontal,
 } from "lucide-react";
 
 export const AdminDashboard: React.FC = () => {
@@ -26,6 +29,9 @@ export const AdminDashboard: React.FC = () => {
     verifyFarmerBiIdentity,
     approveDriverAccount,
   } = useAgro();
+
+  // Active top tab
+  const [activeAdminTab, setActiveAdminTab] = useState<"ANALYTICS" | "USERS" | "ALL">("ANALYTICS");
 
   // Active filter tab
   const [filterStatus, setFilterStatus] = useState<"ALL" | "VERIFIED" | "REJECTED" | "PENDING">("ALL");
@@ -208,9 +214,56 @@ export const AdminDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* AS 3 MÉTRICAS EXCLUSIVAS SOLICITADAS */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* 1. QUANTAS PESSOAS CADASTRADAS */}
+      {/* NAVEGAÇÃO DE ABAS DO PAINEL DE ADMINISTRAÇÃO */}
+      <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl text-xs font-extrabold border border-slate-200">
+        <button
+          onClick={() => setActiveAdminTab("ANALYTICS")}
+          className={`flex-1 py-2 px-4 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer ${
+            activeAdminTab === "ANALYTICS"
+              ? "bg-emerald-800 text-white shadow-xs"
+              : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+          }`}
+        >
+          <BarChart3 className="w-4 h-4 text-emerald-400" />
+          <span>Gráficos & Visualização de Dados (Recharts)</span>
+        </button>
+
+        <button
+          onClick={() => setActiveAdminTab("USERS")}
+          className={`flex-1 py-2 px-4 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer ${
+            activeAdminTab === "USERS"
+              ? "bg-emerald-800 text-white shadow-xs"
+              : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+          }`}
+        >
+          <Users className="w-4 h-4 text-emerald-400" />
+          <span>Gestão de Utilizadores & Verificação de B.I</span>
+        </button>
+
+        <button
+          onClick={() => setActiveAdminTab("ALL")}
+          className={`py-2 px-4 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+            activeAdminTab === "ALL"
+              ? "bg-slate-900 text-white shadow-xs"
+              : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+          }`}
+        >
+          <SlidersHorizontal className="w-4 h-4" />
+          <span>Ver Tudo</span>
+        </button>
+      </div>
+
+      {/* SECÇÃO 1: DASHBOARD DE ANALYTICS COM RECHARTS */}
+      {(activeAdminTab === "ANALYTICS" || activeAdminTab === "ALL") && (
+        <AdminAnalyticsDashboard />
+      )}
+
+      {/* SECÇÃO 2: MÉTRICAS E LISTA DE UTILIZADORES */}
+      {(activeAdminTab === "USERS" || activeAdminTab === "ALL") && (
+        <div className="space-y-6">
+          {/* AS 3 MÉTRICAS EXCLUSIVAS SOLICITADAS */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* 1. QUANTAS PESSOAS CADASTRADAS */}
         <div className="p-5 bg-white rounded-3xl border border-emerald-100 shadow-xs space-y-3 relative overflow-hidden group hover:shadow-md transition-all">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
@@ -580,6 +633,8 @@ export const AdminDashboard: React.FC = () => {
           </table>
         </div>
       </div>
+        </div>
+      )}
     </div>
   );
 };

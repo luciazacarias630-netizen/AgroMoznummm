@@ -1,0 +1,102 @@
+{
+  "entities": {
+    "users": {
+      "fields": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "isVerifiedFarmer": { "type": "boolean" },
+        "verificationStatus": { "type": "string" }
+      }
+    },
+    "products": {
+      "fields": {
+        "id": { "type": "string" },
+        "farmerId": { "type": "string" },
+        "farmerName": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "pricePerUnit": { "type": "number" },
+        "availableQuantity": { "type": "number" },
+        "unit": { "type": "string" },
+        "status": { "type": "string" }
+      }
+    },
+    "orders": {
+      "fields": {
+        "id": { "type": "string" },
+        "buyerId": { "type": "string" },
+        "farmerId": { "type": "string" },
+        "productId": { "type": "string" },
+        "totalAmount": { "type": "number" },
+        "paymentStatus": { "type": "string" },
+        "deliveryStatus": { "type": "string" }
+      }
+    },
+    "machambas": {
+      "fields": {
+        "id": { "type": "string" },
+        "farmerId": { "type": "string" },
+        "name": { "type": "string" },
+        "province": { "type": "string" }
+      }
+    },
+    "messages": {
+      "fields": {
+        "id": { "type": "string" },
+        "senderId": { "type": "string" },
+        "receiverId": { "type": "string" },
+        "content": { "type": "string text" }
+      }
+    },
+    "notifications": {
+      "fields": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string text" }
+      }
+    },
+    "crash_reports": {
+      "fields": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "severity": { "type": "string" },
+        "context": { "type": "string" },
+        "errorMessage": { "type": "string text" },
+        "userId": { "type": "string" }
+      }
+    },
+    "propostas": {
+      "fields": {
+        "id": { "type": "string" },
+        "transacaoId": { "type": "string" },
+        "transportadorId": { "type": "string" },
+        "valorProposto": { "type": "number" },
+        "mensagem": { "type": "string" },
+        "estado": { "type": "string" },
+        "criadoEm": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/orders/{orderId}": {
+      "schema": "orders",
+      "description": "Encomendas e transações agrícolas do mercado AgroMoz"
+    },
+    "/orders/{orderId}/propostas/{propostaId}": {
+      "schema": "propostas",
+      "description": "Propostas de frete/transporte submetidas por motoristas"
+    },
+    "/transacoes/{transacaoId}": {
+      "schema": "orders",
+      "description": "Coleção espelho para transações com custódia de pagamento"
+    },
+    "/transacoes/{transacaoId}/propostas/{propostaId}": {
+      "schema": "propostas",
+      "description": "Propostas de transporte para a transação"
+    }
+  }
+}

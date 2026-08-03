@@ -19,13 +19,33 @@ import {
   ArrowRight,
   Power,
   RotateCcw,
+  Send,
+  DollarSign,
+  Tag,
+  Check,
 } from "lucide-react";
 
 export const DriverDashboard: React.FC = () => {
-  const { currentUser, orders, assignDriverToOrder, updateOrderStatus, testFcmPushNotification } = useAgro();
+  const {
+    currentUser,
+    orders,
+    proposals,
+    assignDriverToOrder,
+    submitDeliveryProposal,
+    updateOrderStatus,
+    confirmDeliveryByDriver,
+    testFcmPushNotification,
+  } = useAgro();
 
   // State for GPS Toggle Switch (Interruptor de Estado do GPS)
   const [isGpsEnabled, setIsGpsEnabled] = useState<boolean>(true);
+
+  // Proposal Modal State
+  const [proposalModalOrder, setProposalModalOrder] = useState<Order | null>(null);
+  const [proposedRate, setProposedRate] = useState<number>(200);
+  const [proposedMsg, setProposedMsg] = useState<string>("Recolho hoje na machamba e entrego em 24h.");
+  const [estimatedHours, setEstimatedHours] = useState<string>("Entrega estimada em 24h");
+  const [proposalSuccessMsg, setProposalSuccessMsg] = useState<string | null>(null);
 
   // Completion modal state
   const [completedOrderModal, setCompletedOrderModal] = useState<{
@@ -51,19 +71,19 @@ export const DriverDashboard: React.FC = () => {
   };
 
   const handleCompleteAndRedirect = (ord: Order) => {
-    // 1. Mark order as "Entregue" (this releases driver fee +150 MT to wallet)
-    updateOrderStatus(ord.id, "Entregue");
+    // 1. Mark order as confirmed by driver (Step 5 of double-confirmation)
+    confirmDeliveryByDriver(ord.id);
 
-    // 2. Deactivate GPS toggle switch (encerrar o seguimento da rota após a entrega finalizada)
+    // 2. Deactivate GPS toggle switch
     setIsGpsEnabled(false);
 
-    // 3. Open notification modal confirming GPS deactivation and wallet credit
+    // 3. Open notification modal confirming driver delivery status
     setCompletedOrderModal({
       productName: ord.productName,
       orderId: ord.id,
     });
 
-    // 4. Smooth scroll to top of main dashboard panel so driver can accept next order
+    // 4. Smooth scroll to top
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -296,14 +316,63 @@ export const DriverDashboard: React.FC = () => {
                     </a>
                   </div>
 
-                  {/* ACCEPT BUTTON */}
-                  <button
-                    onClick={() => handleAcceptTransport(ord.id)}
-                    className="w-full py-3 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer active:scale-95"
-                  >
-                    <CheckCircle2 className="w-4 h-4 text-amber-300" />
-                    Aceitar Transporte desta Encomenda
-                  </button>
+                  {/* PROPOSAL STATUS BADGE IF ALREADY PROPOSED */}
+                  {(() => {
+                    const myProposal = proposals.find(
+                      (p) => p.transacaoId === ord.id && p.transportadorId === (currentUser?.id || "driver-1")
+                    );
+                    if (myProposal) {
+                      return (
+                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-xs space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-extrabold text-amber-900 flex items-center gap-1">
+                              <Tag className="w-3.5 h-3.5 text-amber-600" /> Sua Proposta Enviada: {myProposal.valorProposto} MT
+                            </span>
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                                myProposal.estado === "aceite"
+                                  ? "bg-emerald-600 text-white"
+                                  : myProposal.estado === "rejeitada"
+                                  ? "bg-rose-100 text-rose-800"
+                                  : "bg-amber-200 text-amber-900"
+                              }`}
+                            >
+                              {myProposal.estado === "aceite"
+                                ? "ACEITE 🎉"
+                                : myProposal.estado === "rejeitada"
+                                ? "NÃO SELECIONADO"
+                                : "AGUARDANDO COMPRADOR"}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-600 italic">"{myProposal.mensagem}"</p>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+
+                  {/* ACTION BUTTONS: PROPOSE VS ACCEPT */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      onClick={() => {
+                        setProposalModalOrder(ord);
+                        setProposedRate(180);
+                        setProposalSuccessMsg(null);
+                      }}
+                      className="py-2.5 px-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
+                    >
+                      <Tag className="w-4 h-4 text-slate-950" />
+                      Propor Preço
+                    </button>
+
+                    <button
+                      onClick={() => handleAcceptTransport(ord.id)}
+                      className="py-2.5 px-3 bg-emerald-800 hover:bg-emerald-900 text-white font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer active:scale-95"
+                    >
+                      <CheckCircle2 className="w-4 h-4 text-amber-300" />
+                      Aceitar (150 MT)
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -565,6 +634,138 @@ export const DriverDashboard: React.FC = () => {
               <span>Aceitar Próxima Encomenda Disponível</span>
               <ArrowRight className="w-4 h-4 text-amber-300" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE PROPOSTA DE FRETE PERSONALIZADO */}
+      {proposalModalOrder && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white max-w-md w-full rounded-3xl p-6 shadow-2xl border border-amber-200 space-y-4 animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-amber-100 text-amber-900 rounded-xl">
+                  <Tag className="w-5 h-5 text-amber-600" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-sm">
+                    Submeter Proposta de Frete
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Pedido #{proposalModalOrder.id} • {proposalModalOrder.productName}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setProposalModalOrder(null)}
+                className="text-slate-400 hover:text-slate-600 font-bold text-sm px-2 py-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {proposalSuccessMsg ? (
+              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-center space-y-3">
+                <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto" />
+                <p className="font-extrabold text-emerald-900 text-xs">{proposalSuccessMsg}</p>
+                <button
+                  onClick={() => setProposalModalOrder(null)}
+                  className="px-4 py-2 bg-emerald-800 text-white text-xs font-bold rounded-xl cursor-pointer"
+                >
+                  Concluído
+                </button>
+              </div>
+            ) : (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  submitDeliveryProposal(
+                    proposalModalOrder.id,
+                    proposedRate,
+                    proposedMsg,
+                    estimatedHours
+                  );
+                  setProposalSuccessMsg(`Proposta de ${proposedRate} MT enviada com sucesso para o comprador!`);
+                }}
+                className="space-y-4"
+              >
+                {/* ROTA */}
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-xs space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Recolha:</span>
+                    <strong className="text-slate-900">{proposalModalOrder.farmerName}</strong>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Destino:</span>
+                    <strong className="text-slate-900">{proposalModalOrder.buyerAddress || proposalModalOrder.buyerProvince}</strong>
+                  </div>
+                </div>
+
+                {/* VALOR DA PROPOSTA */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
+                    <span>Preço do Frete Proposto (Meticais):</span>
+                    <span className="text-amber-600 font-extrabold">{proposedRate} MT</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="50"
+                      max="10000"
+                      step="10"
+                      value={proposedRate}
+                      onChange={(e) => setProposedRate(Number(e.target.value))}
+                      className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-extrabold text-slate-900 focus:ring-2 focus:ring-amber-500 outline-none"
+                      required
+                    />
+                    <DollarSign className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                  </div>
+                </div>
+
+                {/* TEMPO ESTIMADO */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700">Tempo Estimado de Entrega:</label>
+                  <select
+                    value={estimatedHours}
+                    onChange={(e) => setEstimatedHours(e.target.value)}
+                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-amber-500 outline-none"
+                  >
+                    <option value="Entrega em até 12 horas">Entrega em até 12 horas</option>
+                    <option value="Entrega estimada em 24h">Entrega estimada em 24h</option>
+                    <option value="Entrega em 48 horas">Entrega em 48 horas (Distância longa)</option>
+                  </select>
+                </div>
+
+                {/* MENSAGEM OPCIONAL */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700">Nota para o Comprador:</label>
+                  <textarea
+                    rows={2}
+                    value={proposedMsg}
+                    onChange={(e) => setProposedMsg(e.target.value)}
+                    placeholder="Ex: Tenho carrinha refrigerada e posso sair hoje à tarde."
+                    className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-amber-500 outline-none"
+                  />
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setProposalModalOrder(null)}
+                    className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md transition-all cursor-pointer active:scale-95"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    Enviar Proposta
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

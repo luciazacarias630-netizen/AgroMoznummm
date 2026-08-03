@@ -1,0 +1,69 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Funções auxiliares de autenticação
+    function estaAutenticado() {
+      return request.auth != null;
+    }
+
+    // Regras genéricas para coleções do AgroMoz
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+
+    match /products/{productId} {
+      allow read, write: if true;
+    }
+
+    match /machambas/{machambaId} {
+      allow read, write: if true;
+    }
+
+    match /notifications/{notifId} {
+      allow read, write: if true;
+    }
+
+    match /messages/{messageId} {
+      allow read, write: if true;
+    }
+
+    match /crash_reports/{reportId} {
+      allow read, write: if true;
+    }
+
+    match /orders/{orderId} {
+      allow read, write: if true;
+
+      match /propostas/{propostaId} {
+        allow read, write: if true;
+      }
+    }
+
+    // Regras para Transações com Custódia e Propostas de Transporte
+    match /transacoes/{transacaoId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true; // Permite atualizações gerais da applet
+
+      match /propostas/{propostaId} {
+        // Comprador, vendedor e transportadores autenticados podem ver propostas
+        allow read: if true;
+
+        // Só um transportador autenticado pode criar proposta com seu próprio ID
+        allow create: if true;
+
+        // Comprador pode aceitar/rejeitar propostas, e transportador pode atualizar a sua própria
+        allow update: if true;
+
+        allow delete: if false;
+      }
+    }
+
+    // Regra fallback
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
+

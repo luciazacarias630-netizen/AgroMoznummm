@@ -134,6 +134,34 @@ export interface Order {
   totalAmount: number; // subtotal + deliveryFee
   deliveryFee: number;
 
+  // Campos específicos da regra de Custódia e Pagamento Separado (Vendedor / Transportador / AgroMoz)
+  tipoEntrega?: "entrega" | "levantamento";
+  destinoEntrega?: {
+    provincia: string;
+    distrito: string;
+    endereco: string;
+    lat?: number;
+    lng?: number;
+  } | null;
+  valorProduto?: number; // Equivalente a subtotal
+  valorTransporte?: number | null; // null até haver proposta aceite
+  estadoPagamentoVendedor?: "pendente" | "pago";
+  estadoPagamentoTransportador?: "pendente" | "pago";
+  estado?:
+    | "aguardando_propostas"
+    | "aguardando_pagamento"
+    | "pago"
+    | "em_transito"
+    | "entrega_confirmada_transportador"
+    | "concluido"
+    | "cancelado"
+    | "disputa";
+  transportadorConfirmouEm?: string | null;
+  compradorConfirmouEm?: string | null;
+  pagamentoLiberadoVendedor?: boolean;
+  pagamentoLiberadoTransportador?: boolean;
+  pagamentoLiberadoEm?: string | null;
+
   paymentMethod: PaymentMethod;
   paymentStatus: TransactionStatus;
   escrowStatus: "Pendente" | "Liberado" | "Cancelado" | "Reembolsado";
@@ -218,4 +246,19 @@ export interface WeatherInfo {
   humidity: number;
   rainChance: number;
   icon: string;
+}
+
+export interface DeliveryProposal {
+  id: string;
+  transacaoId: string;
+  transportadorId: string;
+  driverName?: string;
+  driverPhone?: string;
+  driverRating?: number;
+  vehicleType?: string;
+  valorProposto: number;
+  mensagem?: string;
+  tempoEstimado?: string; // ex: "Entrega em 24h"
+  estado: "pendente" | "aceite" | "rejeitada";
+  criadoEm: string;
 }
