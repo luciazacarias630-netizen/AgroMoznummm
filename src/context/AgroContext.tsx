@@ -640,6 +640,17 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }, (err) => console.log("Firestore levantamentos sync:", err));
 
+    const unsubNotifs = onSnapshot(collection(db, "notificacoes"), (snapshot) => {
+      if (!snapshot.empty) {
+        const items: AppNotification[] = [];
+        snapshot.forEach((docSnap) => items.push(docSnap.data() as AppNotification));
+        if (items.length > 0) {
+          items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          setAppNotifications(items);
+        }
+      }
+    }, (err) => console.log("Firestore notificacoes sync:", err));
+
     return () => {
       unsubProds();
       unsubOrders();
@@ -648,6 +659,7 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
       unsubCarteiras();
       unsubTransCarteira();
       unsubLevantamentos();
+      unsubNotifs();
     };
   }, []);
 
@@ -756,6 +768,13 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setAppNotifications((prev) => [newNotif, ...prev]);
     setNotifications((prev) => [`[${title}] ${message}`, ...prev]);
 
+    // Save notification doc to Firestore
+    if (db) {
+      setDoc(doc(db, "notificacoes", newNotif.id), newNotif).catch((e) =>
+        console.error("Erro ao guardar notificação no Firestore:", e)
+      );
+    }
+
     // Role eligibility check
     const matchesRole =
       !currentUser ||
@@ -801,15 +820,24 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setAppNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, read: true } : n))
     );
+    if (db) {
+      setDoc(doc(db, "notificacoes", id), { read: true }, { merge: true }).catch((e) =>
+        console.error("Erro ao atualizar notificação no Firestore:", e)
+      );
+    }
   };
 
   const markAllNotificationsAsRead = () => {
     setAppNotifications((prev) =>
-      prev.map((n) =>
-        !currentUser || n.userId === "ALL" || n.userId === currentUser.id
-          ? { ...n, read: true }
-          : n
-      )
+      prev.map((n) => {
+        const matches = !currentUser || n.userId === "ALL" || n.userId === currentUser.id;
+        if (matches && db && !n.read) {
+          setDoc(doc(db, "notificacoes", n.id), { read: true }, { merge: true }).catch((e) =>
+            console.error("Erro ao marcar como lida:", e)
+          );
+        }
+        return matches ? { ...n, read: true } : n;
+      })
     );
   };
 

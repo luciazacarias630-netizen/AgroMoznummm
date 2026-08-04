@@ -11,6 +11,7 @@ import {
   simulateAICropScan,
   CROP_DATABASE,
 } from "../utils/productImageScanner";
+import { uploadImageToStorage } from "../services/storageService";
 import {
   Sprout,
   PlusCircle,
@@ -46,6 +47,7 @@ import {
   RefreshCw,
   Loader2,
   BadgeCheck,
+  CloudUpload,
 } from "lucide-react";
 
 export const FarmerDashboard: React.FC = () => {
@@ -82,6 +84,8 @@ export const FarmerDashboard: React.FC = () => {
   const [prodImgUrl, setProdImgUrl] = useState(
     "https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&q=80&w=600"
   );
+  const [isUploadingProductImg, setIsUploadingProductImg] = useState(false);
+  const [productImgProgress, setProductImgProgress] = useState(0);
   const [termsAccepted, setTermsAccepted] = useState(false);
 
   // Crop Photo Catalog State
@@ -192,17 +196,22 @@ export const FarmerDashboard: React.FC = () => {
     handleStartLiveCamera(nextFacing);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (typeof reader.result === "string") {
-          setProdImgUrl(reader.result);
-          setAiMatchedCropName("Fotografia da Galeria");
-        }
-      };
-      reader.readAsDataURL(file);
+      setIsUploadingProductImg(true);
+      setProductImgProgress(10);
+      try {
+        const uploadedUrl = await uploadImageToStorage(file, "products", (progress) => {
+          setProductImgProgress(progress);
+        });
+        setProdImgUrl(uploadedUrl);
+        setAiMatchedCropName("Fotografia Carregada no Firebase Storage");
+      } catch (err: any) {
+        alert("Erro ao carregar a imagem do produto: " + (err.message || "Tente novamente."));
+      } finally {
+        setIsUploadingProductImg(false);
+      }
     }
   };
 
@@ -851,7 +860,7 @@ export const FarmerDashboard: React.FC = () => {
                   Tire uma fotografia em direto do seu produto ou carregue um ficheiro da galeria. A AgroMoz solicita permissão para aceder à câmara do seu dispositivo.
                 </p>
 
-                {/* Camera Buttons */}
+                {/* Camera & Upload Buttons */}
                 <div className="grid grid-cols-2 gap-2 pt-1">
                   <button
                     type="button"
@@ -864,11 +873,21 @@ export const FarmerDashboard: React.FC = () => {
 
                   <button
                     type="button"
+                    disabled={isUploadingProductImg}
                     onClick={() => fileInputRef.current?.click()}
-                    className="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-amber-300 font-extrabold rounded-xl text-[11px] transition-all flex items-center justify-center gap-1.5 border border-amber-400/30 active:scale-95 cursor-pointer"
+                    className="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-amber-300 font-extrabold rounded-xl text-[11px] transition-all flex items-center justify-center gap-1.5 border border-amber-400/30 active:scale-95 cursor-pointer disabled:opacity-50"
                   >
-                    <Upload className="w-4 h-4" />
-                    <span>Escolher da Galeria</span>
+                    {isUploadingProductImg ? (
+                      <>
+                        <Loader2 className="w-4 h-4 text-amber-300 animate-spin" />
+                        <span>A carregar ({productImgProgress}%)...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4" />
+                        <span>Upload p/ Firebase Storage</span>
+                      </>
+                    )}
                   </button>
                 </div>
 
@@ -1310,28 +1329,43 @@ export const FarmerDashboard: React.FC = () => {
               </div>
 
               {/* PRODUCT IMAGE PREVIEW CARD */}
-              <div className="p-2.5 bg-slate-100 rounded-2xl border border-slate-200 flex items-center gap-3">
-                <img
-                  src={prodImgUrl}
-                  alt="Fotografia do produto"
-                  className="w-16 h-16 rounded-xl object-cover border border-slate-300 shadow-sm shrink-0"
-                />
+              <div className="p-3 bg-slate-100 rounded-2xl border border-slate-200 flex items-center gap-3">
+                <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-slate-200 border border-slate-300 shadow-sm shrink-0 flex items-center justify-center">
+                  <img
+                    src={prodImgUrl}
+                    alt="Fotografia do produto"
+                    className="w-full h-full object-cover"
+                  />
+                  {isUploadingProductImg && (
+                    <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-xs flex flex-col items-center justify-center text-white">
+                      <Loader2 className="w-5 h-5 animate-spin text-amber-300" />
+                      <span className="text-[9px] font-mono font-bold text-amber-300 mt-0.5">{productImgProgress}%</span>
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex-1 space-y-1">
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-800 text-[11px] flex items-center gap-1">
                       <ImageIcon className="w-3.5 h-3.5 text-emerald-700" />
-                      Fotografia Selecionada
+                      Fotografia do Produto
                     </span>
-                    <span className="text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">
-                      Qualidade HD
-                    </span>
+                    {isUploadingProductImg ? (
+                      <span className="text-[9px] bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded font-bold animate-pulse">
+                        Upload p/ Firebase...
+                      </span>
+                    ) : (
+                      <span className="text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold flex items-center gap-1">
+                        <CloudUpload className="w-3 h-3 text-emerald-600" /> Firebase Storage
+                      </span>
+                    )}
                   </div>
                   <input
                     type="text"
                     value={prodImgUrl}
                     onChange={(e) => setProdImgUrl(e.target.value)}
                     className="w-full px-2 py-1 bg-white border border-slate-200 rounded-lg font-mono text-[10px] text-slate-600 truncate"
-                    title="URL da fotografia ou Base64"
+                    title="URL da fotografia ou Firebase Storage URL"
                   />
                 </div>
               </div>

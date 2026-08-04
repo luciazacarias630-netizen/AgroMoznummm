@@ -353,8 +353,8 @@ export const AuthScreen: React.FC = () => {
                 onClick={() => {
                   setSelectedRole("ADMIN");
                   setAuthMode("LOGIN");
-                  setLoginPhone("863983206");
-                  setLoginPass("123");
+                  setLoginPhone("");
+                  setLoginPass("");
                   setLoginError("");
                 }}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 hover:text-white border border-slate-700 text-xs font-medium transition-all"
@@ -426,21 +426,10 @@ export const AuthScreen: React.FC = () => {
                     <div>
                       <span className="font-extrabold text-amber-300 block">Acesso de Administrador Restrito</span>
                       <span className="text-[11px] text-purple-200/90">
-                        O cadastro de novos administradores está desativado. Apenas o número autorizado (<strong>863983206</strong>) possui permissão de acesso.
+                        Por motivos de segurança, insira manualmente as suas credenciais para entrar na área administrativa.
                       </span>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLoginPhone("863983206");
-                      setLoginPass("123");
-                      setLoginError("");
-                    }}
-                    className="mt-1 py-1.5 px-3 bg-purple-900/90 hover:bg-purple-800 text-amber-300 border border-purple-400/40 rounded-xl text-[11px] font-bold transition-all text-center"
-                  >
-                    ⚡ Preencher Credenciais do Admin (863983206 / 123)
-                  </button>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 bg-slate-900/90 p-1 rounded-2xl mb-6 border border-slate-700">
@@ -523,7 +512,7 @@ export const AuthScreen: React.FC = () => {
                       <ArrowRight className="w-4 h-4" />
                     </button>
 
-                    {users.filter((u) => u.role === selectedRole).length > 0 && (
+                    {selectedRole !== "ADMIN" && users.filter((u) => u.role === selectedRole).length > 0 && (
                       <div className="pt-2 border-t border-slate-700/60 text-left">
                         <span className="text-[10px] font-bold text-slate-400 block mb-1.5 uppercase tracking-wider">
                           Contas Registadas ({selectedRole === "FARMER" ? "Agricultores" : selectedRole === "BUYER" ? "Compradores" : selectedRole === "DRIVER" ? "Transportadores" : "Admins"}):

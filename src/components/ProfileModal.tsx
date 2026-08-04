@@ -3,6 +3,7 @@ import { useAgro } from "../context/AgroContext";
 import { MOZAMBIQUE_PROVINCES } from "../data/mozambiqueLocations";
 import { VerifiedFarmerBadge } from "./VerifiedFarmerBadge";
 import { FarmerVerificationModal } from "./FarmerVerificationModal";
+import { uploadImageToStorage } from "../services/storageService";
 import {
   X,
   Camera,
@@ -18,6 +19,8 @@ import {
   ShieldCheck,
   BadgeCheck,
   AlertCircle,
+  Loader2,
+  CloudUpload,
 } from "lucide-react";
 
 interface ProfileModalProps {
@@ -65,26 +68,33 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
   const [bio, setBio] = useState(currentUser?.bio || "");
   const [photoTab, setPhotoTab] = useState<"UPLOAD" | "PRESETS" | "URL">("UPLOAD");
   const [customUrl, setCustomUrl] = useState("");
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [successMessage, setSuccessMessage] = useState(false);
   const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
 
   if (!currentUser || !isOpen) return null;
 
-  // Handle local image file selection
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle local image file selection and Firebase Storage upload
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        alert("A imagem selecionada é muito grande. Por favor escolha um ficheiro até 5MB.");
+      if (file.size > 10 * 1024 * 1024) {
+        alert("A imagem selecionada é muito grande. Por favor escolha um ficheiro até 10MB.");
         return;
       }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (typeof reader.result === "string") {
-          setPhotoUrl(reader.result);
-        }
-      };
-      reader.readAsDataURL(file);
+      setIsUploadingPhoto(true);
+      setUploadProgress(10);
+      try {
+        const url = await uploadImageToStorage(file, "profiles", (progress) => {
+          setUploadProgress(progress);
+        });
+        setPhotoUrl(url);
+      } catch (err: any) {
+        alert("Erro ao carregar a foto de perfil: " + (err.message || "Tente novamente."));
+      } finally {
+        setIsUploadingPhoto(false);
+      }
     }
   };
 
@@ -212,18 +222,33 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
                 {/* TAB 1: FILE UPLOAD */}
                 {photoTab === "UPLOAD" && (
                   <div>
-                    <label className="flex items-center justify-center gap-2 w-full py-2.5 px-3 bg-white hover:bg-emerald-50 border-2 border-dashed border-emerald-300 rounded-xl cursor-pointer text-xs font-bold text-emerald-800 transition-all">
-                      <Upload className="w-4 h-4 text-emerald-600" />
-                      <span>Escolher Imagem do Dispositivo</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleFileUpload}
-                        className="hidden"
-                      />
-                    </label>
+                    {isUploadingPhoto ? (
+                      <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2 text-center text-xs font-bold text-emerald-900">
+                        <div className="flex items-center justify-center gap-2">
+                          <Loader2 className="w-4 h-4 text-emerald-700 animate-spin" />
+                          <span>A carregar para Firebase Storage... ({uploadProgress}%)</span>
+                        </div>
+                        <div className="w-full bg-emerald-200 h-1.5 rounded-full overflow-hidden">
+                          <div
+                            className="bg-emerald-700 h-full transition-all duration-300"
+                            style={{ width: `${uploadProgress}%` }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <label className="flex items-center justify-center gap-2 w-full py-2.5 px-3 bg-white hover:bg-emerald-50 border-2 border-dashed border-emerald-300 rounded-xl cursor-pointer text-xs font-bold text-emerald-800 transition-all">
+                        <CloudUpload className="w-4 h-4 text-emerald-600" />
+                        <span>Upload p/ Firebase Storage (Até 10MB)</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleFileUpload}
+                          className="hidden"
+                        />
+                      </label>
+                    )}
                     <span className="text-[10px] text-slate-500 block text-center mt-1">
-                      Suporta JPG, PNG ou WEBP até 5MB.
+                      Suporta JPG, PNG ou WEBP. Armazenado com segurança no Firebase.
                     </span>
                   </div>
                 )}

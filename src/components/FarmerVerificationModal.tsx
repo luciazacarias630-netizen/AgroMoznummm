@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useAgro } from "../context/AgroContext";
+import { uploadImageToStorage } from "../services/storageService";
 import {
   X,
   Upload,
@@ -13,6 +14,8 @@ import {
   Calendar,
   Lock,
   Eye,
+  Loader2,
+  CloudUpload,
 } from "lucide-react";
 
 interface FarmerVerificationModalProps {
@@ -34,6 +37,11 @@ export const FarmerVerificationModal: React.FC<FarmerVerificationModalProps> = (
 
   const [biFront, setBiFront] = useState<string>(currentUser?.biFrontUrl || SAMPLE_BI_FRONT);
   const [biBack, setBiBack] = useState<string>(currentUser?.biBackUrl || SAMPLE_BI_BACK);
+  const [isUploadingFront, setIsUploadingFront] = useState<boolean>(false);
+  const [frontUploadProgress, setFrontUploadProgress] = useState<number>(0);
+  const [isUploadingBack, setIsUploadingBack] = useState<boolean>(false);
+  const [backUploadProgress, setBackUploadProgress] = useState<number>(0);
+
   const [birthDate, setBirthDate] = useState<string>(currentUser?.birthDate || "1996-04-12");
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [scanResult, setScanResult] = useState<string | null>(null);
@@ -88,26 +96,40 @@ export const FarmerVerificationModal: React.FC<FarmerVerificationModalProps> = (
   const currentCalculatedAge = calculateAge(birthDate);
   const isAdult = currentCalculatedAge >= 18;
 
-  // File Upload Handlers
-  const handleFrontUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // File Upload Handlers (Firebase Storage Upload)
+  const handleFrontUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (typeof reader.result === "string") setBiFront(reader.result);
-      };
-      reader.readAsDataURL(file);
+      setIsUploadingFront(true);
+      setFrontUploadProgress(10);
+      try {
+        const url = await uploadImageToStorage(file, "bi_documents", (progress) => {
+          setFrontUploadProgress(progress);
+        });
+        setBiFront(url);
+      } catch (err: any) {
+        alert("Erro no upload do B.I Frente: " + (err.message || "Tente novamente"));
+      } finally {
+        setIsUploadingFront(false);
+      }
     }
   };
 
-  const handleBackUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBackUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (typeof reader.result === "string") setBiBack(reader.result);
-      };
-      reader.readAsDataURL(file);
+      setIsUploadingBack(true);
+      setBackUploadProgress(10);
+      try {
+        const url = await uploadImageToStorage(file, "bi_documents", (progress) => {
+          setBackUploadProgress(progress);
+        });
+        setBiBack(url);
+      } catch (err: any) {
+        alert("Erro no upload do B.I Verso: " + (err.message || "Tente novamente"));
+      } finally {
+        setIsUploadingBack(false);
+      }
     }
   };
 
@@ -267,9 +289,14 @@ export const FarmerVerificationModal: React.FC<FarmerVerificationModalProps> = (
 
           {/* B.I PHOTO UPLOADS (FRENTE & VERSO) */}
           <div className="space-y-3">
-            <label className="text-xs font-extrabold text-slate-900 block uppercase tracking-wider">
-              1. Fotografias do B.I (Bilhete de Identidade)
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-extrabold text-slate-900 block uppercase tracking-wider">
+                1. Fotografias do B.I (Bilhete de Identidade)
+              </label>
+              <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                <CloudUpload className="w-3 h-3 text-amber-600" /> Firebase Storage Ativo
+              </span>
+            </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* B.I FRENTE */}
@@ -287,16 +314,30 @@ export const FarmerVerificationModal: React.FC<FarmerVerificationModalProps> = (
                     alt="B.I Frente"
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                   />
-                  <label className="absolute inset-0 bg-slate-950/40 hover:bg-slate-950/60 flex flex-col items-center justify-center text-white text-xs font-bold cursor-pointer opacity-80 hover:opacity-100 transition-opacity p-2 text-center">
-                    <Upload className="w-5 h-5 mb-1 text-amber-300" />
-                    <span>Alterar Foto Frente</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFrontUpload}
-                      className="hidden"
-                    />
-                  </label>
+                  {isUploadingFront ? (
+                    <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-xs flex flex-col items-center justify-center text-white text-xs font-bold p-3 space-y-2">
+                      <Loader2 className="w-6 h-6 animate-spin text-amber-400" />
+                      <span>A carregar para Firebase Storage...</span>
+                      <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                        <div
+                          className="bg-amber-400 h-full transition-all duration-300"
+                          style={{ width: `${frontUploadProgress}%` }}
+                        />
+                      </div>
+                      <span className="text-[10px] text-amber-300 font-mono">{frontUploadProgress}%</span>
+                    </div>
+                  ) : (
+                    <label className="absolute inset-0 bg-slate-950/40 hover:bg-slate-950/60 flex flex-col items-center justify-center text-white text-xs font-bold cursor-pointer opacity-80 hover:opacity-100 transition-opacity p-2 text-center">
+                      <Upload className="w-5 h-5 mb-1 text-amber-300" />
+                      <span>Upload Ficheiro B.I Frente</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFrontUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  )}
                 </div>
               </div>
 
@@ -315,16 +356,30 @@ export const FarmerVerificationModal: React.FC<FarmerVerificationModalProps> = (
                     alt="B.I Verso"
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                   />
-                  <label className="absolute inset-0 bg-slate-950/40 hover:bg-slate-950/60 flex flex-col items-center justify-center text-white text-xs font-bold cursor-pointer opacity-80 hover:opacity-100 transition-opacity p-2 text-center">
-                    <Upload className="w-5 h-5 mb-1 text-amber-300" />
-                    <span>Alterar Foto Verso</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleBackUpload}
-                      className="hidden"
-                    />
-                  </label>
+                  {isUploadingBack ? (
+                    <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-xs flex flex-col items-center justify-center text-white text-xs font-bold p-3 space-y-2">
+                      <Loader2 className="w-6 h-6 animate-spin text-amber-400" />
+                      <span>A carregar para Firebase Storage...</span>
+                      <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                        <div
+                          className="bg-amber-400 h-full transition-all duration-300"
+                          style={{ width: `${backUploadProgress}%` }}
+                        />
+                      </div>
+                      <span className="text-[10px] text-amber-300 font-mono">{backUploadProgress}%</span>
+                    </div>
+                  ) : (
+                    <label className="absolute inset-0 bg-slate-950/40 hover:bg-slate-950/60 flex flex-col items-center justify-center text-white text-xs font-bold cursor-pointer opacity-80 hover:opacity-100 transition-opacity p-2 text-center">
+                      <Upload className="w-5 h-5 mb-1 text-amber-300" />
+                      <span>Upload Ficheiro B.I Verso</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleBackUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  )}
                 </div>
               </div>
             </div>
