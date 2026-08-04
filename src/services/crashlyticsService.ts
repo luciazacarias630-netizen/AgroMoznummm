@@ -171,11 +171,19 @@ class CrashlyticsService {
     };
 
     // Print styled log to developer console
-    console.error(
-      `🚨 [Crashlytics - ${severity.toUpperCase()}] [${context}]`,
-      errorMessage,
-      crashReport
-    );
+    if (severity === "fatal" || severity === "error") {
+      console.error(
+        `🚨 [Crashlytics - ${severity.toUpperCase()}] [${context}]`,
+        errorMessage,
+        crashReport
+      );
+    } else {
+      console.warn(
+        `🚨 [Crashlytics - ${severity.toUpperCase()}] [${context}]`,
+        errorMessage,
+        crashReport
+      );
+    }
 
     // Save real-time crash report to Firestore if connected
     if (db) {
@@ -199,7 +207,7 @@ class CrashlyticsService {
   ) {
     return this.recordError(
       error,
-      "fatal",
+      "warning",
       `AUTH_${action.toUpperCase()}`,
       {
         feature: "AUTHENTICATION",

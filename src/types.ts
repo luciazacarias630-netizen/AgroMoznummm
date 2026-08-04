@@ -188,6 +188,49 @@ export interface ChatMessage {
   status: "Enviada" | "Recebida" | "Visualizada";
 }
 
+export interface Carteira {
+  userId: string;
+  saldoDisponivel: number;
+  saldoRetido: number;
+  moeda: "MZN";
+  atualizadoEm: string;
+}
+
+export type TipoTransacaoCarteira =
+  | "deposito"
+  | "levantamento"
+  | "retencao"
+  | "liberacao"
+  | "estorno";
+
+export type EstadoTransacaoCarteira = "pendente" | "concluido" | "falhado";
+
+export interface TransacaoCarteira {
+  id: string;
+  userId: string;
+  tipo: TipoTransacaoCarteira;
+  valor: number;
+  transacaoEncomendaId: string | null;
+  referenciaExterna: string;
+  estado: EstadoTransacaoCarteira;
+  criadoEm: string;
+}
+
+export type OperadoraB2C = "mpesa" | "emola";
+export type EstadoLevantamento = "processando" | "concluido" | "falhado";
+
+export interface Levantamento {
+  id?: string;
+  userId: string;
+  valor: number;
+  numeroTelefone: string;
+  operadora: OperadoraB2C;
+  estado: EstadoLevantamento;
+  motivoFalha?: string;
+  criadoEm: string;
+  concluidoEm?: string;
+}
+
 export interface WalletTransaction {
   id: string;
   userId: string;

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 
-export type Language = "pt" | "en";
+export type Language = "pt" | "cga" | "vmw" | "seh" | "en";
 
 interface LanguageContextType {
   language: Language;
@@ -59,8 +59,173 @@ const translations: Record<Language, Record<string, string>> = {
 
     // Language Toggle
     "lang.portuguese": "Português",
+    "lang.changana": "Changana (Xichangana)",
+    "lang.macua": "Macua (Emakhuwa)",
+    "lang.sena": "Sena (Cisena)",
     "lang.english": "English",
-    "lang.selectLanguage": "Idioma / Language",
+    "lang.selectLanguage": "Idioma / Languja",
+  },
+  cga: {
+    // Navigation & Tabs (Changana / Xichangana - Sul: Maputo, Gaza, Inhambane)
+    "nav.market": "Musika",
+    "nav.farmer": "Murimi",
+    "nav.driver": "Kuthwala & Mihandzu",
+    "nav.map": "Mape ya Machamba",
+    "nav.admin": "Vurangariri",
+    "nav.wallet": "Xipaci",
+    "nav.guide": "Xitshungunu",
+    "nav.support": "Muxaka WhatsApp",
+    "nav.logout": "Huma",
+    "nav.profile": "Wene Wanga",
+    "nav.editProfile": "Lulamisa Xifaniso",
+
+    // Header & User States
+    "header.online": "Wa Tirha",
+    "header.offline": "A nga Tirhi",
+    "header.notifs": "Mahiwelela",
+    "header.noNotifs": "Kuhava mahiwelela sweswi",
+    "header.markAllRead": "Hlaya hinkwaswo",
+    "header.clear": "Sula",
+
+    // Market Page
+    "market.title": "Musika wa Timphahla ta Murimi Moçambique",
+    "market.subtitle": "Swa kudya swo basa swo huma na machamba ya 10 sviphendla ta Moçambique",
+    "market.searchPlaceholder": "Lava mavele, timawa, matimati, mikusu...",
+    "market.allProvinces": "Tiko Hinkwaro",
+    "market.allCategories": "Muxaka Hinkwayo",
+    "market.buyNow": "Xava Sweswi",
+    "market.contactFarmer": "Vulavula na Murimi",
+    "market.pricePerKg": "MT / kg",
+    "market.available": "Swa Kumeka",
+    "market.outOfStock": "Swa Hela",
+
+    // Roles
+    "role.farmer": "Murimi",
+    "role.buyer": "Muxavi",
+    "role.driver": "Muthwali",
+    "role.admin": "Murangariri",
+
+    // Support & Footer
+    "support.title": "Lava Mpfuno?",
+    "support.whatsapp": "WhatsApp wa Mpfuno",
+    "support.customerSupport": "Mpfuno wa Vanhu (WhatsApp)",
+    "footer.copyright": "© 2026 AgroMoz. Tlhanganisa varimi ta Maputo, Gaza, Sofala, Nampula na tiko hinkwaro ta Moçambique.",
+
+    // Language Toggle
+    "lang.portuguese": "Português",
+    "lang.changana": "Changana (Xichangana)",
+    "lang.macua": "Macua (Emakhuwa)",
+    "lang.sena": "Sena (Cisena)",
+    "lang.english": "English",
+    "lang.selectLanguage": "Xivulavulelo / Idioma",
+  },
+  vmw: {
+    // Navigation & Tabs (Macua / Emakhuwa - Norte: Nampula, Cabo Delgado, Niassa, Zambézia)
+    "nav.market": "Omerikato",
+    "nav.farmer": "Namuteko a Olima",
+    "nav.driver": "Mithukulu & Mukwaha",
+    "nav.map": "Ekaarta ya Mathalani",
+    "nav.admin": "Olamula",
+    "nav.wallet": "Epaso / Musurukhu",
+    "nav.guide": "Malakiheryo",
+    "nav.support": "Nikhuuru WhatsApp",
+    "nav.logout": "Okhuma",
+    "nav.profile": "Miya",
+    "nav.editProfile": "Oturuka Epicha",
+
+    // Header & User States
+    "header.online": "Okhala",
+    "header.offline": "Owoorana",
+    "header.notifs": "Emasikha",
+    "header.noNotifs": "Kahiivo emasikha nna",
+    "header.markAllRead": "Olosha Soothe",
+    "header.clear": "Oluha",
+
+    // Market Page
+    "market.title": "Omerikato a Olima wa Moçambique",
+    "market.subtitle": "Yoolia sooreera sookhuma wa amulimi a iprovinsiya sa Moçambique",
+    "market.searchPlaceholder": "Ovasa nchama, ekhawa, tamate, ikaju...",
+    "market.allProvinces": "Iprovinsiya Soothe",
+    "market.allCategories": "Mureerelo Yoothe",
+    "market.buyNow": "Othuma Nna",
+    "market.contactFarmer": "Olavula ni Mulimi",
+    "market.pricePerKg": "MT / kg",
+    "market.available": "Esepeya",
+    "market.outOfStock": "Omala",
+
+    // Roles
+    "role.farmer": "Mulimi",
+    "role.buyer": "Muthumi",
+    "role.driver": "Mukwaha",
+    "role.admin": "Namulamula",
+
+    // Support & Footer
+    "support.title": "Munachuna Nikhuuru?",
+    "support.whatsapp": "WhatsApp wa Nikhuuru",
+    "support.customerSupport": "Nikhuuru a Athu (WhatsApp)",
+    "footer.copyright": "© 2026 AgroMoz. Otuka amulimi a Nampula, Cabo Delgado, Niassa, Zambézia ni Moçambique woothe.",
+
+    // Language Toggle
+    "lang.portuguese": "Português",
+    "lang.changana": "Changana (Xichangana)",
+    "lang.macua": "Macua (Emakhuwa)",
+    "lang.sena": "Sena (Cisena)",
+    "lang.english": "English",
+    "lang.selectLanguage": "Nthanthi / Idioma",
+  },
+  seh: {
+    // Navigation & Tabs (Sena / Cisena - Centro: Sofala, Manica, Tete, Zambézia)
+    "nav.market": "Musika",
+    "nav.farmer": "Peno ya Nsereko",
+    "nav.driver": "Kutwala & Nyatwaza",
+    "nav.map": "Mapa ya Machamba",
+    "nav.admin": "Utongi",
+    "nav.wallet": "Nhonga / Xipaci",
+    "nav.guide": "Metsani",
+    "nav.support": "Cipangizo WhatsApp",
+    "nav.logout": "Buluka",
+    "nav.profile": "Mune Wanga",
+    "nav.editProfile": "Sasanya Foto",
+
+    // Header & User States
+    "header.online": "Alipo",
+    "header.offline": "Palibe",
+    "header.notifs": "Macenjezo",
+    "header.noNotifs": "Palibe macenjezo cincino",
+    "header.markAllRead": "Leri Pyensene",
+    "header.clear": "Pula",
+
+    // Market Page
+    "market.title": "Musika wa Mbeu mu Moçambique",
+    "market.subtitle": "Chidya chakucena cinabuluka ku machamba m’makhundu 10 ya Moçambique",
+    "market.searchPlaceholder": "Saka zakudya: piripiri, nyemba, mamatimati, caju...",
+    "market.allProvinces": "Makhundu Yensene",
+    "market.allCategories": "Ntundu Yensene",
+    "market.buyNow": "Gulani Cincino",
+    "market.contactFarmer": "Longani na Nsereko",
+    "market.pricePerKg": "MT / kg",
+    "market.available": "Iripo",
+    "market.outOfStock": "Yadamalala",
+
+    // Roles
+    "role.farmer": "Nsereko / Mulimi",
+    "role.buyer": "Nyagula",
+    "role.driver": "Nyatwaza",
+    "role.admin": "Nyatonga",
+
+    // Support & Footer
+    "support.title": "Unasaka Cipangizo?",
+    "support.whatsapp": "WhatsApp wa Cipangizo",
+    "support.customerSupport": "Cipangizo wa Wanthu (WhatsApp)",
+    "footer.copyright": "© 2026 AgroMoz. Kubvunganisa alimi mu Sofala, Manica, Tete, Zambézia na Moçambique yensene.",
+
+    // Language Toggle
+    "lang.portuguese": "Português",
+    "lang.changana": "Changana (Xichangana)",
+    "lang.macua": "Macua (Emakhuwa)",
+    "lang.sena": "Sena (Cisena)",
+    "lang.english": "English",
+    "lang.selectLanguage": "Cilongero / Idioma",
   },
   en: {
     // Navigation & Tabs
@@ -110,6 +275,9 @@ const translations: Record<Language, Record<string, string>> = {
 
     // Language Toggle
     "lang.portuguese": "Português",
+    "lang.changana": "Changana (Xichangana)",
+    "lang.macua": "Macua (Emakhuwa)",
+    "lang.sena": "Sena (Cisena)",
     "lang.english": "English",
     "lang.selectLanguage": "Language / Idioma",
   },
@@ -119,8 +287,11 @@ const LanguageContext = createContext<LanguageContextType | undefined>(undefined
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [language, setLanguageState] = useState<Language>(() => {
-    const saved = localStorage.getItem("agromoz_lang");
-    return saved === "en" ? "en" : "pt";
+    const saved = localStorage.getItem("agromoz_lang") as Language;
+    if (saved && ["pt", "cga", "vmw", "seh", "en"].includes(saved)) {
+      return saved;
+    }
+    return "pt";
   });
 
   const setLanguage = (lang: Language) => {
@@ -129,7 +300,9 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const toggleLanguage = () => {
-    setLanguage(language === "pt" ? "en" : "pt");
+    const order: Language[] = ["pt", "cga", "vmw", "seh", "en"];
+    const nextIdx = (order.indexOf(language) + 1) % order.length;
+    setLanguage(order[nextIdx]);
   };
 
   const t = (key: string): string => {

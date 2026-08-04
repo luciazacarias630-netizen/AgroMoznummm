@@ -62,6 +62,7 @@ export const FarmerDashboard: React.FC = () => {
     receiverPhone,
     transactions,
     testFcmPushNotification,
+    getCarteira,
   } = useAgro();
 
   const [showAddProdModal, setShowAddProdModal] = useState(false);
@@ -278,27 +279,22 @@ export const FarmerDashboard: React.FC = () => {
   const farmerMachambas = machambas.filter((m) => m.farmerId === currentUser?.id);
   const farmerTxs = transactions.filter((t) => t.userId === currentUser?.id);
 
-  // Escrow & Financial Calculations
+  // Escrow & Financial Calculations (/carteiras/{userId})
+  const liveCarteira = currentUser ? getCarteira(currentUser.id) : null;
+
   const grossRevenue = farmerOrders.reduce((acc, curr) => acc + (curr.subtotal || curr.totalAmount || 0), 0);
   const totalAppliedFees = farmerOrders.reduce(
     (acc, curr) => acc + (curr.platformFee || Math.round((curr.subtotal || curr.totalAmount || 0) * 0.05)),
     0
   );
 
-  const pendingEscrowBalance = farmerOrders
-    .filter((o) => o.escrowStatus === "Pendente")
-    .reduce((acc, curr) => acc + (curr.farmerNetAmount || Math.round((curr.subtotal || curr.totalAmount || 0) * 0.95)), 0);
+  const pendingEscrowBalance = liveCarteira
+    ? liveCarteira.saldoRetido
+    : farmerOrders
+        .filter((o) => o.escrowStatus === "Pendente")
+        .reduce((acc, curr) => acc + (curr.farmerNetAmount || Math.round((curr.subtotal || curr.totalAmount || 0) * 0.95)), 0);
 
-  const releasedRevenue = farmerOrders
-    .filter((o) => o.escrowStatus === "Liberado")
-    .reduce((acc, curr) => acc + (curr.farmerNetAmount || Math.round((curr.subtotal || curr.totalAmount || 0) * 0.95)), 0);
-
-  // Available balance in wallet
-  let availableBalance = releasedRevenue;
-  farmerTxs.forEach((t) => {
-    if (t.type === "SAÍDA") availableBalance -= t.amount;
-  });
-  availableBalance = Math.max(0, availableBalance);
+  const availableBalance = liveCarteira ? liveCarteira.saldoDisponivel : 0;
 
   const handleCreateProduct = (e: React.FormEvent) => {
     e.preventDefault();

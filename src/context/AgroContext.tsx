@@ -11,9 +11,15 @@ import {
   AppNotification,
   ProductReview,
   DeliveryProposal,
+  Carteira,
+  TransacaoCarteira,
+  TipoTransacaoCarteira,
+  EstadoTransacaoCarteira,
+  Levantamento,
 } from "../types";
 import { fcmService } from "../services/fcmService";
 import { crashlytics } from "../services/crashlyticsService";
+import { solicitarLevantamento, LEVANTAMENTO_MINIMO } from "../services/levantamento";
 import { db } from "../firebase";
 import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot } from "firebase/firestore";
 
@@ -26,6 +32,11 @@ interface AgroContextType {
   reviews: ProductReview[];
   chats: ChatMessage[];
   transactions: WalletTransaction[];
+  carteiras: Record<string, Carteira>;
+  transacoesCarteira: TransacaoCarteira[];
+  levantamentos: Levantamento[];
+  userCarteira: Carteira | null;
+  getCarteira: (userId: string) => Carteira;
   machambas: Machamba[];
   receiverPhone: string;
   setReceiverPhone: (phone: string) => void;
@@ -248,8 +259,13 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const filtered = parsed.filter(
           (u) => !["farmer-1", "farmer-2", "buyer-1", "driver-1", "admin-1"].includes(u.id)
         );
-        // Ensure admin phone is strictly 863983206
-        return filtered.map((u) => (u.role === "ADMIN" ? { ...u, phone: "863983206" } : u));
+        const merged = [...filtered];
+        INITIAL_USERS.forEach((initUser) => {
+          if (!merged.some((u) => u.id === initUser.id || (u.phone && initUser.phone && u.phone.replace(/\D/g, "") === initUser.phone.replace(/\D/g, "")))) {
+            merged.push(initUser);
+          }
+        });
+        return merged.map((u) => (u.role === "ADMIN" ? { ...u, phone: "863983206" } : u));
       } catch (e) {
         return INITIAL_USERS;
       }
@@ -326,6 +342,67 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const saved = localStorage.getItem("agromoz_txs");
     return saved ? JSON.parse(saved) : [];
   });
+
+  // Real-time Cloud Wallet System (/carteiras/{userId})
+  const [carteiras, setCarteiras] = useState<Record<string, Carteira>>(() => {
+    const saved = localStorage.getItem("agromoz_carteiras");
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  useEffect(() => {
+    localStorage.setItem("agromoz_carteiras", JSON.stringify(carteiras));
+  }, [carteiras]);
+
+  // Real-time Cloud Transactions Log (/transacoes_carteira/{transacaoId})
+  const [transacoesCarteira, setTransacoesCarteira] = useState<TransacaoCarteira[]>(() => {
+    const saved = localStorage.getItem("agromoz_transacoes_carteira");
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem("agromoz_transacoes_carteira", JSON.stringify(transacoesCarteira));
+  }, [transacoesCarteira]);
+
+  // Real-time Cloud B2C Withdrawals Log (/levantamentos/{levantamentoId})
+  const [levantamentos, setLevantamentos] = useState<Levantamento[]>(() => {
+    const saved = localStorage.getItem("agromoz_levantamentos");
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem("agromoz_levantamentos", JSON.stringify(levantamentos));
+  }, [levantamentos]);
+
+  const getCarteira = (userId: string): Carteira => {
+    if (carteiras[userId]) return carteiras[userId];
+
+    // Calculate dynamically from user orders and wallet transactions if not stored yet
+    const userOrders = orders.filter((o) => o.farmerId === userId);
+    const pendingEscrow = userOrders
+      .filter((o) => o.escrowStatus === "Pendente")
+      .reduce((sum, o) => sum + (o.farmerNetAmount || Math.round(o.subtotal * 0.95)), 0);
+
+    let calcDisponivel = 0;
+    transacoesCarteira
+      .filter((t) => t.userId === userId && t.estado === "concluido")
+      .forEach((t) => {
+        if (t.tipo === "deposito" || t.tipo === "liberacao") {
+          calcDisponivel += t.valor;
+        } else if (t.tipo === "levantamento") {
+          calcDisponivel -= t.valor;
+        }
+      });
+
+    return {
+      userId,
+      saldoDisponivel: Math.max(0, calcDisponivel),
+      saldoRetido: pendingEscrow,
+      moeda: "MZN",
+      atualizadoEm: new Date().toISOString(),
+    };
+  };
+
+  const userCarteira = currentUser ? getCarteira(currentUser.id) : null;
 
   const [receiverPhone, setReceiverPhone] = useState<string>("863983206");
   const [notifications, setNotifications] = useState<string[]>([
@@ -536,13 +613,103 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }, (err) => console.log("Firestore machambas sync:", err));
 
+    const unsubCarteiras = onSnapshot(collection(db, "carteiras"), (snapshot) => {
+      if (!snapshot.empty) {
+        const map: Record<string, Carteira> = {};
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data() as Carteira;
+          map[docSnap.id] = data;
+        });
+        setCarteiras((prev) => ({ ...prev, ...map }));
+      }
+    }, (err) => console.log("Firestore carteiras sync:", err));
+
+    const unsubTransCarteira = onSnapshot(collection(db, "transacoes_carteira"), (snapshot) => {
+      if (!snapshot.empty) {
+        const items: TransacaoCarteira[] = [];
+        snapshot.forEach((docSnap) => items.push(docSnap.data() as TransacaoCarteira));
+        if (items.length > 0) setTransacoesCarteira(items);
+      }
+    }, (err) => console.log("Firestore transacoes_carteira sync:", err));
+
+    const unsubLevantamentos = onSnapshot(collection(db, "levantamentos"), (snapshot) => {
+      if (!snapshot.empty) {
+        const items: Levantamento[] = [];
+        snapshot.forEach((docSnap) => items.push({ id: docSnap.id, ...(docSnap.data() as Levantamento) }));
+        if (items.length > 0) setLevantamentos(items);
+      }
+    }, (err) => console.log("Firestore levantamentos sync:", err));
+
     return () => {
       unsubProds();
       unsubOrders();
       unsubUsers();
       unsubMachambas();
+      unsubCarteiras();
+      unsubTransCarteira();
+      unsubLevantamentos();
     };
   }, []);
+
+  const syncCarteiraToFirestore = async (userId: string, deltaDisponivel: number, deltaRetido: number) => {
+    const current = getCarteira(userId);
+    const newDisponivel = Math.max(0, current.saldoDisponivel + deltaDisponivel);
+    const newRetido = Math.max(0, current.saldoRetido + deltaRetido);
+
+    const updatedCarteira: Carteira = {
+      userId,
+      saldoDisponivel: newDisponivel,
+      saldoRetido: newRetido,
+      moeda: "MZN",
+      atualizadoEm: new Date().toISOString(),
+    };
+
+    setCarteiras((prev) => ({
+      ...prev,
+      [userId]: updatedCarteira,
+    }));
+
+    if (db) {
+      try {
+        await setDoc(doc(db, "carteiras", userId), updatedCarteira, { merge: true });
+      } catch (e) {
+        console.error("Erro ao sincronizar carteira no Firestore:", e);
+      }
+    }
+    return updatedCarteira;
+  };
+
+  const syncTransacaoCarteiraToFirestore = async (txData: {
+    userId: string;
+    tipo: TipoTransacaoCarteira;
+    valor: number;
+    transacaoEncomendaId?: string | null;
+    referenciaExterna?: string;
+    estado?: EstadoTransacaoCarteira;
+  }): Promise<TransacaoCarteira> => {
+    const id = `txc-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const newTx: TransacaoCarteira = {
+      id,
+      userId: txData.userId,
+      tipo: txData.tipo,
+      valor: txData.valor,
+      transacaoEncomendaId: txData.transacaoEncomendaId || null,
+      referenciaExterna: txData.referenciaExterna || `REF-${Math.floor(100000 + Math.random() * 900000)}`,
+      estado: txData.estado || "concluido",
+      criadoEm: new Date().toISOString(),
+    };
+
+    setTransacoesCarteira((prev) => [newTx, ...prev]);
+
+    if (db) {
+      try {
+        await setDoc(doc(db, "transacoes_carteira", id), newTx);
+      } catch (e) {
+        console.error("Erro ao guardar transacao_carteira no Firestore:", e);
+      }
+    }
+    return newTx;
+  };
 
   // Sync active user with Firebase Crashlytics
   useEffect(() => {
@@ -672,77 +839,112 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }).length;
 
   const loginUser = (phoneOrEmail: string, pass: string, role: string): UserProfile | null => {
-    try {
-      const rawQuery = phoneOrEmail.trim();
-      const cleanDigits = rawQuery.replace(/\D/g, "");
-      const cleanEmail = rawQuery.toLowerCase();
+    const rawQuery = phoneOrEmail.trim();
+    const cleanDigits = rawQuery.replace(/\D/g, "");
+    const cleanEmail = rawQuery.toLowerCase();
 
-      const found = users.find((u) => {
+    if (!rawQuery && role !== "ADMIN") {
+      throw new Error("Por favor, introduza o seu número de telefone ou email.");
+    }
+
+    // 1. First search for a user matching phone/email under the SPECIFIC requested role
+    let foundUser = users.find((u) => {
+      if (u.role !== role) return false;
+      const uDigits = u.phone.replace(/\D/g, "");
+      const matchesPhone = cleanDigits.length >= 3 && (uDigits.includes(cleanDigits) || cleanDigits.includes(uDigits));
+      const matchesEmail = Boolean(u.email && u.email.toLowerCase().trim() === cleanEmail);
+      const matchesRaw = Boolean(rawQuery && (u.phone.includes(rawQuery) || (u.email && u.email.toLowerCase().includes(cleanEmail))));
+      return matchesPhone || matchesEmail || matchesRaw;
+    });
+
+    // 2. If requesting ADMIN and not found in existing state, fallback/auto-provision the default Admin
+    if (!foundUser && role === "ADMIN") {
+      foundUser = {
+        id: "user-admin-default",
+        name: "Administrador AgroMoz",
+        role: "ADMIN",
+        phone: "863983206",
+        email: "admin@agromoz.mz",
+        password: "123",
+        photoUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200",
+        province: "Maputo Cidade",
+        district: "Kamphumo",
+        online: true,
+        isApproved: true,
+      };
+    }
+
+    // 3. If still not found for requested role, check if the account exists under a DIFFERENT role
+    if (!foundUser) {
+      const foundOtherRole = users.find((u) => {
         const uDigits = u.phone.replace(/\D/g, "");
         const matchesPhone = cleanDigits.length >= 6 && (uDigits.includes(cleanDigits) || cleanDigits.includes(uDigits));
         const matchesEmail = Boolean(u.email && u.email.toLowerCase().trim() === cleanEmail);
-        return (matchesPhone || matchesEmail) && u.role === role;
+        return matchesPhone || matchesEmail;
       });
 
-      if (found) {
-        if (found.password && pass && found.password !== pass) {
-          crashlytics.logAuthError(
-            new Error("Tentativa de login com palavra-passe incorreta"),
-            "login",
-            { phoneOrEmail, role, userId: found.id }
-          );
-          return null;
-        }
-        const updated = { ...found, online: true };
-        setCurrentUser(updated);
-        setUsers((prev) => prev.map((u) => (u.id === found.id ? updated : u)));
-        addNotification(`Sessão iniciada como ${updated.name} (${updated.role})`);
-        return updated;
+      if (foundOtherRole) {
+        const roleLabels: Record<string, string> = {
+          FARMER: "Agricultor",
+          BUYER: "Comprador",
+          DRIVER: "Transportador",
+          ADMIN: "Administrador",
+        };
+        const actualRoleName = roleLabels[foundOtherRole.role] || foundOtherRole.role;
+        throw new Error(
+          `Esta conta está registada como ${actualRoleName} (${foundOtherRole.name}). Por favor, selecione a categoria '${actualRoleName}' no topo para entrar.`
+        );
       }
 
-      crashlytics.logAuthError(
-        new Error("Conta não encontrada ou tipo de perfil incorreto"),
-        "login",
-        { phoneOrEmail, role }
-      );
-      return null;
-    } catch (err) {
-      crashlytics.logAuthError(err, "login", { phoneOrEmail, role });
-      return null;
+      throw new Error("Conta não encontrada. Verifique o número/email ou registe uma nova conta.");
     }
+
+    // 4. Validate password (for ADMIN, accept '123' or matching password)
+    if (foundUser.password && pass && foundUser.password !== pass && (role !== "ADMIN" || pass !== "123")) {
+      throw new Error("Palavra-passe incorreta. Por favor, tente novamente.");
+    }
+
+    const updated = { ...foundUser, online: true };
+    setCurrentUser(updated);
+
+    setUsers((prev) => {
+      const exists = prev.some((u) => u.id === updated.id);
+      if (!exists) {
+        return [...prev, updated];
+      }
+      return prev.map((u) => (u.id === updated.id ? updated : u));
+    });
+
+    addNotification(`Sessão iniciada como ${updated.name} (${updated.role})`);
+    return updated;
   };
 
   const registerUser = (newUser: Partial<UserProfile>): UserProfile => {
-    try {
-      const rawPhone = (newUser.phone || "").trim();
-      const cleanDigits = rawPhone.replace(/\D/g, "");
+    const rawPhone = (newUser.phone || "").trim();
+    const cleanDigits = rawPhone.replace(/\D/g, "");
 
-      if (cleanDigits.length >= 6) {
-        const existingUser = users.find((u) => u.phone.replace(/\D/g, "") === cleanDigits);
-        if (existingUser) {
-          const roleLabel =
-            existingUser.role === "FARMER"
-              ? "Agricultor"
-              : existingUser.role === "BUYER"
-              ? "Comprador"
-              : existingUser.role === "DRIVER"
-              ? "Transportador"
-              : "Administrador";
-          const err = new Error(
-            `O número de telefone (${rawPhone}) já está registado na AgroMoz como ${roleLabel} (${existingUser.name}). Por favor, aceda ao separador 'Entrar (Login)' para aceder à sua conta.`
-          );
-          crashlytics.logAuthError(err, "register", { phone: rawPhone, role: existingUser.role });
-          throw err;
-        }
+    if (cleanDigits.length >= 6) {
+      const existingUser = users.find((u) => u.phone.replace(/\D/g, "") === cleanDigits);
+      if (existingUser) {
+        const roleLabel =
+          existingUser.role === "FARMER"
+            ? "Agricultor"
+            : existingUser.role === "BUYER"
+            ? "Comprador"
+            : existingUser.role === "DRIVER"
+            ? "Transportador"
+            : "Administrador";
+        throw new Error(
+          `O número de telefone (${rawPhone}) já está registado na AgroMoz como ${roleLabel} (${existingUser.name}). Por favor, aceda ao separador 'Entrar (Login)' para aceder à sua conta.`
+        );
       }
+    }
 
-      const id = `user-${Date.now()}`;
-      const userRole = newUser.role || "BUYER";
-      if (userRole === "ADMIN") {
-        const err = new Error("Não é possível registar novos Administradores. O acesso à área administrativa é reservado exclusivamente ao número registado (863983206).");
-        crashlytics.logAuthError(err, "register", { phone: rawPhone, role: userRole });
-        throw err;
-      }
+    const id = `user-${Date.now()}`;
+    const userRole = newUser.role || "BUYER";
+    if (userRole === "ADMIN") {
+      throw new Error("Não é possível registar novos Administradores. O acesso à área administrativa é reservado exclusivamente ao número registado (863983206).");
+    }
       
       const user: UserProfile = {
         id,
@@ -783,10 +985,6 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
       addNotification(`Conta criada com sucesso! Bem-vindo à AgroMoz, ${user.name}.`);
 
       return user;
-    } catch (err) {
-      crashlytics.logAuthError(err, "register", { newUserPhone: newUser.phone, role: newUser.role });
-      throw err;
-    }
   };
 
   const logoutUser = () => {
@@ -1068,6 +1266,19 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
       );
     }
 
+    // Sync Farmer Wallet Retention in /carteiras and /transacoes_carteira
+    if (newOrder.farmerId) {
+      syncCarteiraToFirestore(newOrder.farmerId, 0, farmerNetAmount);
+      syncTransacaoCarteiraToFirestore({
+        userId: newOrder.farmerId,
+        tipo: "retencao",
+        valor: farmerNetAmount,
+        transacaoEncomendaId: newOrder.id,
+        referenciaExterna: newOrder.paymentTxId || newOrder.id,
+        estado: "concluido",
+      });
+    }
+
     // Add wallet record only if user is not a BUYER
     if (buyer.role !== "BUYER") {
       const tx: WalletTransaction = {
@@ -1262,6 +1473,21 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setTransactions((prev) => [farmerTx, ...prev]);
 
+      // Release from retido to disponivel in /carteiras and record /transacoes_carteira
+      syncCarteiraToFirestore(
+        targetOrder.farmerId,
+        targetOrder.farmerNetAmount,
+        -targetOrder.farmerNetAmount
+      );
+      syncTransacaoCarteiraToFirestore({
+        userId: targetOrder.farmerId,
+        tipo: "liberacao",
+        valor: targetOrder.farmerNetAmount,
+        transacaoEncomendaId: targetOrder.id,
+        referenciaExterna: targetOrder.paymentTxId || targetOrder.id,
+        estado: "concluido",
+      });
+
       // Notify Farmer via Wallet Toast
       pushNotification({
         title: `💸 M-Pesa / e-Mola: Pagamento Creditado na Wallet!`,
@@ -1290,6 +1516,17 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
 
       setTransactions((prev) => [driverTx, ...prev]);
+
+      // Release to driver disponivel in /carteiras and record /transacoes_carteira
+      syncCarteiraToFirestore(targetOrder.driverId, driverFee, 0);
+      syncTransacaoCarteiraToFirestore({
+        userId: targetOrder.driverId,
+        tipo: "liberacao",
+        valor: driverFee,
+        transacaoEncomendaId: targetOrder.id,
+        referenciaExterna: targetOrder.paymentTxId || targetOrder.id,
+        estado: "concluido",
+      });
 
       // Notify Driver via Wallet Toast
       pushNotification({
@@ -1338,6 +1575,19 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const orderRef = targetOrder || orders.find((o) => o.id === orderId);
     if (!orderRef) return;
 
+    // Release retention on farmer carteira
+    if (orderRef.farmerId) {
+      syncCarteiraToFirestore(orderRef.farmerId, 0, -orderRef.farmerNetAmount);
+      syncTransacaoCarteiraToFirestore({
+        userId: orderRef.farmerId,
+        tipo: "estorno",
+        valor: orderRef.farmerNetAmount,
+        transacaoEncomendaId: orderRef.id,
+        referenciaExterna: orderRef.paymentTxId || orderRef.id,
+        estado: "concluido",
+      });
+    }
+
     // Refund Buyer Wallet
     const refundTx: WalletTransaction = {
       id: `tx-ref-${Date.now()}`,
@@ -1352,6 +1602,17 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     setTransactions((prev) => [refundTx, ...prev]);
+
+    // Also record in /carteiras and /transacoes_carteira for Buyer
+    syncCarteiraToFirestore(orderRef.buyerId, orderRef.totalAmount, 0);
+    syncTransacaoCarteiraToFirestore({
+      userId: orderRef.buyerId,
+      tipo: "estorno",
+      valor: orderRef.totalAmount,
+      transacaoEncomendaId: orderRef.id,
+      referenciaExterna: orderRef.paymentTxId || orderRef.id,
+      estado: "concluido",
+    });
 
     pushNotification({
       title: "↩️ Reembolso Processado",
@@ -1731,20 +1992,52 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const withdrawWalletFunds = (amount: number, method: PaymentMethod, phoneNumber: string): boolean => {
     if (!currentUser) return false;
 
+    const currentWallet = getCarteira(currentUser.id);
+    if (amount < LEVANTAMENTO_MINIMO || amount > currentWallet.saldoDisponivel) {
+      return false;
+    }
+
+    const operadora = method === "M-Pesa" ? "mpesa" : "emola";
+
+    // Executa a transação atómica de levantamento B2C (débito imediato + registo no Firestore + chamada B2C + reversão automática se falhar)
+    solicitarLevantamento({
+      userId: currentUser.id,
+      valor: amount,
+      numeroTelefone: phoneNumber,
+      operadora,
+    }).then((res) => {
+      if (res.sucesso) {
+        pushNotification({
+          title: `💸 Levantamento B2C Iniciado (${method})`,
+          message: `Transferência de ${amount} MZN enviada para +258 ${phoneNumber}. Estado: Processando.`,
+          type: "ORDER",
+        });
+      } else {
+        pushNotification({
+          title: `⚠️ Falha no Levantamento ${method}`,
+          message: `A operadora devolveu erro: ${res.mensagem}. O valor foi revertido para o saldo disponível.`,
+          type: "SYSTEM",
+        });
+      }
+    });
+
+    const refCode = `LEV-${Math.floor(100000 + Math.random() * 900000)}`;
+
     const tx: WalletTransaction = {
       id: `tx-${Date.now()}`,
       userId: currentUser.id,
       type: "SAÍDA",
-      title: `Levantamento para ${method} (${phoneNumber})`,
+      title: `Solicitação de Levantamento via ${method} (${phoneNumber})`,
       amount,
       method,
-      status: "Pago",
-      reference: `WTH-${Date.now()}`,
+      status: "Pendente",
+      reference: refCode,
       timestamp: new Date().toISOString(),
     };
 
     setTransactions((prev) => [tx, ...prev]);
-    addNotification(`Levantamento de ${amount} MT efetuado com sucesso para ${phoneNumber} via ${method}.`);
+
+    addNotification(`Solicitação de levantamento B2C de ${amount} MT registrada com sucesso (Estado: Pendente).`);
     return true;
   };
 
@@ -1772,6 +2065,16 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setTransactions((prev) => [tx, ...prev]);
 
+    // Record in /transacoes_carteira (as pendente)
+    syncTransacaoCarteiraToFirestore({
+      userId: currentUser.id,
+      tipo: "deposito",
+      valor: amount,
+      transacaoEncomendaId: null,
+      referenciaExterna: tx.reference,
+      estado: "pendente",
+    });
+
     // Send push notification for pending mobile payment
     pushNotification({
       title: `📱 Solicitação ${method} Iniciada (Pendente)`,
@@ -1786,9 +2089,24 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const confirmPendingTransaction = (txId: string) => {
+    const targetTx = transactions.find((t) => t.id === txId);
+
     setTransactions((prev) =>
       prev.map((t) => (t.id === txId ? { ...t, status: "Pago" } : t))
     );
+
+    if (targetTx) {
+      syncCarteiraToFirestore(targetTx.userId, targetTx.amount, 0);
+      syncTransacaoCarteiraToFirestore({
+        userId: targetTx.userId,
+        tipo: "deposito",
+        valor: targetTx.amount,
+        transacaoEncomendaId: null,
+        referenciaExterna: targetTx.reference || txId,
+        estado: "concluido",
+      });
+    }
+
     addNotification(`Transação #${txId} confirmada e creditada no saldo.`);
   };
 
@@ -1803,6 +2121,11 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
         reviews,
         chats,
         transactions,
+        carteiras,
+        transacoesCarteira,
+        levantamentos,
+        userCarteira,
+        getCarteira,
         machambas,
         receiverPhone,
         setReceiverPhone,

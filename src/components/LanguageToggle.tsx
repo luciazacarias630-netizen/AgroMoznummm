@@ -29,8 +29,11 @@ export const LanguageToggle: React.FC<LanguageToggleProps> = ({
   }, []);
 
   const languages: { code: Language; label: string; flag: string; nativeName: string }[] = [
-    { code: "pt", label: "Português", flag: "🇲🇿", nativeName: "Português (MZ)" },
-    { code: "en", label: "English", flag: "🇬🇧", nativeName: "English (UK/SADC)" },
+    { code: "pt", label: "Português", flag: "🇲🇿", nativeName: "Moçambique (Oficial)" },
+    { code: "cga", label: "Changana", flag: "🇲🇿", nativeName: "Sul: Maputo, Gaza, Inhambane" },
+    { code: "vmw", label: "Macua", flag: "🇲🇿", nativeName: "Norte: Nampula, Niassa, Delgado" },
+    { code: "seh", label: "Sena", flag: "🇲🇿", nativeName: "Centro: Sofala, Tete, Zambézia" },
+    { code: "en", label: "English", flag: "🇬🇧", nativeName: "SADC / International" },
   ];
 
   const currentLangObj = languages.find((l) => l.code === language) || languages[0];

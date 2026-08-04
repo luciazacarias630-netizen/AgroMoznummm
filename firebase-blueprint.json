@@ -79,9 +79,66 @@
         "estado": { "type": "string" },
         "criadoEm": { "type": "string" }
       }
+    },
+    "carteiras": {
+      "fields": {
+        "saldoDisponivel": { "type": "number" },
+        "saldoRetido": { "type": "number" },
+        "moeda": { "type": "string" },
+        "atualizadoEm": { "type": "string" }
+      }
+    },
+    "transacoes_carteira": {
+      "fields": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "tipo": { "type": "string" },
+        "valor": { "type": "number" },
+        "transacaoEncomendaId": { "type": "string" },
+        "referenciaExterna": { "type": "string" },
+        "estado": { "type": "string" },
+        "criadoEm": { "type": "string" }
+      }
+    },
+    "carteira_plataforma": {
+      "fields": {
+        "saldoTotalEmCustodia": { "type": "number" },
+        "saldoComissoes": { "type": "number" },
+        "saldoOperacional": { "type": "number" },
+        "taxaComissaoPadrao": { "type": "number" },
+        "atualizadoEm": { "type": "string" }
+      }
+    },
+    "levantamentos": {
+      "fields": {
+        "userId": { "type": "string" },
+        "valor": { "type": "number" },
+        "numeroTelefone": { "type": "string" },
+        "operadora": { "type": "string" },
+        "estado": { "type": "string" },
+        "motivoFalha": { "type": "string" },
+        "criadoEm": { "type": "string" },
+        "concluidoEm": { "type": "string" }
+      }
     }
   },
   "firestore": {
+    "/carteiras/{userId}": {
+      "schema": "carteiras",
+      "description": "Carteiras digitais de utilizadores no AgroMoz (saldo disponível e retido em custódia)"
+    },
+    "/carteira_plataforma/{docId}": {
+      "schema": "carteira_plataforma",
+      "description": "Carteira central e contabilidade de custódia e comissões da plataforma AgroMoz"
+    },
+    "/transacoes_carteira/{transacaoId}": {
+      "schema": "transacoes_carteira",
+      "description": "Registos de transações da carteira (depósitos, levantamentos, retenções, liberações)"
+    },
+    "/levantamentos/{levantamentoId}": {
+      "schema": "levantamentos",
+      "description": "Pedidos de levantamento B2C processados para M-Pesa / e-Mola"
+    },
     "/orders/{orderId}": {
       "schema": "orders",
       "description": "Encomendas e transações agrícolas do mercado AgroMoz"

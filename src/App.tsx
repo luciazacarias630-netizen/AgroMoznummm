@@ -25,6 +25,14 @@ import {
   MessageCircle,
   Headphones,
   ExternalLink,
+  Home,
+  Store,
+  MapPin,
+  Package,
+  User,
+  Plus,
+  Bot,
+  Sparkles,
 } from "lucide-react";
 
 export function App() {
@@ -49,14 +57,16 @@ export function App() {
 
   // Automatically adjust activeTab if currentUser role changes
   React.useEffect(() => {
-    if (currentUser?.role === "FARMER" && activeTab !== "FARMER" && activeTab !== "MARKET" && activeTab !== "MAP") {
+    if (currentUser?.role === "ADMIN") {
+      setActiveTab("ADMIN");
+    } else if (currentUser?.role === "FARMER" && activeTab !== "FARMER" && activeTab !== "MARKET" && activeTab !== "MAP") {
       setActiveTab("FARMER");
     } else if (currentUser?.role === "DRIVER" && activeTab !== "DRIVER" && activeTab !== "MAP") {
       setActiveTab("DRIVER");
     } else if (currentUser?.role === "BUYER" && (activeTab === "FARMER" || activeTab === "DRIVER" || activeTab === "ADMIN")) {
       setActiveTab("MARKET");
     }
-  }, [currentUser?.role, activeTab]);
+  }, [currentUser?.role]);
 
   // If user is not logged in, show Auth Portal
   if (!currentUser) {
@@ -103,7 +113,7 @@ export function App() {
                   }`}
                 >
                   <Sprout className="w-4 h-4 text-amber-300" />
-                  Painel do Agricultor (Produtos & Machamba)
+                  {t("nav.farmer")}
                 </button>
               )}
 
@@ -118,7 +128,7 @@ export function App() {
                   }`}
                 >
                   <ShoppingBag className="w-4 h-4 text-amber-300" />
-                  {currentUser.role === "FARMER" ? "Ver Mercado de Preços" : "Mercado Agrícola (Comprar)"}
+                  {currentUser.role === "FARMER" ? `${t("nav.market")} (Preços)` : t("nav.market")}
                 </button>
               )}
 
@@ -133,7 +143,7 @@ export function App() {
                   }`}
                 >
                   <Truck className="w-4 h-4 text-amber-300" />
-                  Portal do Transportador
+                  {t("nav.driver")}
                 </button>
               )}
 
@@ -147,7 +157,7 @@ export function App() {
                 }`}
               >
                 <Compass className="w-4 h-4 text-amber-300" />
-                Mapa das Machambas
+                {t("nav.map")}
               </button>
 
               {/* ADMIN PANEL TAB */}
@@ -161,7 +171,7 @@ export function App() {
                   }`}
                 >
                   <ShieldCheck className="w-4 h-4 text-amber-400" />
-                  Painel Admin
+                  {t("nav.admin")}
                 </button>
               )}
             </div>
@@ -240,8 +250,8 @@ export function App() {
       />
 
       {/* Floating Bottom Language Selector */}
-      <div className="fixed bottom-5 left-5 z-40">
-        <LanguageToggle dropDirection="up" />
+      <div className="fixed bottom-4 left-4 sm:bottom-5 sm:left-5 z-40">
+        <LanguageToggle dropDirection="up" variant="pill" />
       </div>
 
       {/* Floating WhatsApp Customer Support Button */}
@@ -249,14 +259,14 @@ export function App() {
         href="https://wa.link/gm5urh"
         target="_blank"
         rel="noopener noreferrer"
-        className="fixed bottom-5 right-5 z-40 flex items-center gap-2.5 px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-full shadow-2xl hover:scale-105 active:scale-95 transition-all duration-200 ring-4 ring-emerald-500/30 group"
+        className="fixed bottom-4 right-4 sm:bottom-5 sm:right-5 z-40 flex items-center gap-2 px-3 py-2.5 sm:px-4 sm:py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-full shadow-2xl hover:scale-105 active:scale-95 transition-all duration-200 ring-4 ring-emerald-500/30 group"
         title={t("support.whatsapp")}
       >
         <div className="relative">
           <Headphones className="w-5 h-5 text-amber-300 animate-pulse" />
           <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-400 rounded-full border-2 border-emerald-800 animate-ping" />
         </div>
-        <div className="flex flex-col text-left">
+        <div className="hidden xs:flex flex-col text-left">
           <span className="text-[10px] text-emerald-200 font-bold uppercase tracking-wider leading-none">
             {t("support.title")}
           </span>

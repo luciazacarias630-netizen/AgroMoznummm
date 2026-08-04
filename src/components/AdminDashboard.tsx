@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useAgro } from "../context/AgroContext";
 import { VerifiedFarmerBadge } from "./VerifiedFarmerBadge";
 import { AdminAnalyticsDashboard } from "./AdminAnalyticsDashboard";
+import { AdminWithdrawalDashboard } from "./AdminWithdrawalDashboard";
 import {
   ShieldCheck,
   Users,
@@ -21,6 +22,7 @@ import {
   FileSpreadsheet,
   BarChart3,
   SlidersHorizontal,
+  Wallet,
 } from "lucide-react";
 
 export const AdminDashboard: React.FC = () => {
@@ -31,7 +33,7 @@ export const AdminDashboard: React.FC = () => {
   } = useAgro();
 
   // Active top tab
-  const [activeAdminTab, setActiveAdminTab] = useState<"ANALYTICS" | "USERS" | "ALL">("ANALYTICS");
+  const [activeAdminTab, setActiveAdminTab] = useState<"ANALYTICS" | "USERS" | "WITHDRAWALS" | "ALL">("ANALYTICS");
 
   // Active filter tab
   const [filterStatus, setFilterStatus] = useState<"ALL" | "VERIFIED" | "REJECTED" | "PENDING">("ALL");
@@ -237,7 +239,19 @@ export const AdminDashboard: React.FC = () => {
           }`}
         >
           <Users className="w-4 h-4 text-emerald-400" />
-          <span>Gestão de Utilizadores & Verificação de B.I</span>
+          <span>Utilizadores & B.I</span>
+        </button>
+
+        <button
+          onClick={() => setActiveAdminTab("WITHDRAWALS")}
+          className={`flex-1 py-2 px-4 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer ${
+            activeAdminTab === "WITHDRAWALS"
+              ? "bg-emerald-800 text-white shadow-xs"
+              : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+          }`}
+        >
+          <Wallet className="w-4 h-4 text-amber-400" />
+          <span>Levantamentos B2C</span>
         </button>
 
         <button
@@ -256,6 +270,11 @@ export const AdminDashboard: React.FC = () => {
       {/* SECÇÃO 1: DASHBOARD DE ANALYTICS COM RECHARTS */}
       {(activeAdminTab === "ANALYTICS" || activeAdminTab === "ALL") && (
         <AdminAnalyticsDashboard />
+      )}
+
+      {/* SECÇÃO LEVANTAMENTOS B2C (M-PESA / E-MOLA) */}
+      {(activeAdminTab === "WITHDRAWALS" || activeAdminTab === "ALL") && (
+        <AdminWithdrawalDashboard />
       )}
 
       {/* SECÇÃO 2: MÉTRICAS E LISTA DE UTILIZADORES */}

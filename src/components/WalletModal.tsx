@@ -33,6 +33,8 @@ export const WalletModal: React.FC<WalletModalProps> = ({ onClose }) => {
     orders,
     withdrawWalletFunds,
     depositWalletFunds,
+    getCarteira,
+    transacoesCarteira,
   } = useAgro();
 
   const isFarmer = currentUser?.role === "FARMER";
@@ -42,6 +44,9 @@ export const WalletModal: React.FC<WalletModalProps> = ({ onClose }) => {
   const [activeTab, setActiveTab] = useState<"DEPOSIT_PAY" | "ESCROW" | "WITHDRAW">(
     isAdmin ? "WITHDRAW" : "WITHDRAW"
   );
+
+  // Live Cloud Wallet Data (/carteiras/{userId})
+  const liveCarteira = currentUser ? getCarteira(currentUser.id) : null;
 
   // Payment/Deposit Module States (For Farmers/Drivers testing or deposits)
   const [payMethod, setPayMethod] = useState<PaymentMethod>("M-Pesa");
@@ -59,50 +64,32 @@ export const WalletModal: React.FC<WalletModalProps> = ({ onClose }) => {
   const [phoneInput, setPhoneInput] = useState<string>(currentUser?.phone || "841234567");
   const [pinInput, setPinInput] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [withdrawFeedback, setWithdrawFeedback] = useState<string | null>(null);
 
-  // Filter user transactions
+  // Filter user transactions from legacy & new /transacoes_carteira
   const userTxs = transactions.filter((t) => t.userId === currentUser?.id);
+  const userCarteiraTxs = transacoesCarteira.filter((t) => t.userId === currentUser?.id);
 
   // --- CÁLCULOS EXCLUSIVOS DE GANHOS DA APLICAÇÃO PARA O ADMINISTRADOR ---
-  // Total de comissões (5%) ganhas pela aplicação AgroMoz em todas as vendas
   const totalPlatformEarnings = orders.reduce(
     (sum, o) => sum + (o.platformFee || Math.round((o.subtotal || o.totalAmount || 0) * 0.05)),
     0
   );
 
-  // Total de levantamentos já efetuados pelo administrador
   const totalAdminWithdrawals = userTxs
     .filter((t) => t.type === "SAÍDA")
     .reduce((sum, t) => sum + t.amount, 0);
 
-  // Saldo líquido disponível do Administrador para levantamento
   const adminAvailableBalance = Math.max(0, totalPlatformEarnings - totalAdminWithdrawals);
 
-  // Escrow Metrics para Agricultor / Comprador
-  const farmerOrders = orders.filter((o) => o.farmerId === currentUser?.id);
-  const buyerOrders = orders.filter((o) => o.buyerId === currentUser?.id);
+  // Balance values from /carteiras/{userId}
+  const currentBalance = isAdmin
+    ? adminAvailableBalance
+    : liveCarteira
+    ? liveCarteira.saldoDisponivel
+    : 0;
 
-  const pendingEscrowBalance = isFarmer
-    ? farmerOrders
-        .filter((o) => o.escrowStatus === "Pendente")
-        .reduce((sum, o) => sum + (o.farmerNetAmount || Math.round(o.subtotal * 0.95)), 0)
-    : buyerOrders
-        .filter((o) => o.escrowStatus === "Pendente")
-        .reduce((sum, o) => sum + o.totalAmount, 0);
-
-  const calculateAvailableBalance = () => {
-    if (isAdmin) {
-      return adminAvailableBalance;
-    }
-    let balance = isFarmer ? 0 : 2500; // Base start credit para testes
-    userTxs.forEach((t) => {
-      if (t.type === "ENTRADA" && t.status !== "Pendente") balance += t.amount;
-      else if (t.type === "SAÍDA") balance -= t.amount;
-    });
-    return Math.max(0, balance);
-  };
-
-  const currentBalance = calculateAvailableBalance();
+  const pendingEscrowBalance = liveCarteira ? liveCarteira.saldoRetido : 0;
 
   // Initiate M-Pesa or e-Mola Payment / Deposit
   const handleInitiateMobilePayment = (e: React.FormEvent) => {
@@ -155,9 +142,10 @@ export const WalletModal: React.FC<WalletModalProps> = ({ onClose }) => {
   // Handle Withdraw submit
   const handleWithdrawSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setWithdrawFeedback(null);
 
-    if (amountInput <= 0) {
-      alert("Por favor introduza um valor superior a 0 MT para levantamento.");
+    if (amountInput < 100) {
+      alert("O valor mínimo de levantamento é de 100 MT.");
       return;
     }
 
@@ -173,10 +161,15 @@ export const WalletModal: React.FC<WalletModalProps> = ({ onClose }) => {
 
     setIsProcessing(true);
     setTimeout(() => {
-      withdrawWalletFunds(amountInput, methodInput, phoneInput);
+      const ok = withdrawWalletFunds(amountInput, methodInput, phoneInput);
       setIsProcessing(false);
-      setPinInput("");
-      setAmountInput(100);
+      if (ok) {
+        setWithdrawFeedback(`Solicitação de levantamento de ${amountInput} MT criada com sucesso! O documento foi registrado em 'transacoes_carteira' com tipo 'levantamento' e estado 'pendente'.`);
+        setPinInput("");
+        setAmountInput(100);
+      } else {
+        alert("Não foi possível processar a solicitação de levantamento.");
+      }
     }, 1200);
   };
 
@@ -626,6 +619,16 @@ export const WalletModal: React.FC<WalletModalProps> = ({ onClose }) => {
             {/* TAB CONTENT: WITHDRAWAL FORM FOR FARMERS / DRIVERS */}
             {activeTab === "WITHDRAW" && (
               <div className="space-y-4">
+                {withdrawFeedback && (
+                  <div className="p-3.5 bg-emerald-50 border border-emerald-300 rounded-2xl flex items-start gap-2.5 text-xs text-emerald-900 font-medium animate-fadeIn">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-extrabold text-emerald-950">Solicitação Enviada!</p>
+                      <p className="text-[11px] text-emerald-800 leading-snug mt-0.5">{withdrawFeedback}</p>
+                    </div>
+                  </div>
+                )}
+
                 <form onSubmit={handleWithdrawSubmit} className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3 text-xs">
                   <div className="flex items-center justify-between pb-2 border-b border-slate-200 font-bold text-slate-900">
                     <span>Transferir do Saldo Livre para Carteira Móvel</span>
@@ -697,75 +700,144 @@ export const WalletModal: React.FC<WalletModalProps> = ({ onClose }) => {
               </div>
             )}
 
-            {/* HISTÓRICO DE TRANSAÇÕES GERAL */}
-            <div className="space-y-2 pt-2 border-t border-slate-100">
+            {/* HISTÓRICO DE TRANSAÇÕES GERAL & TRANSAÇÕES DE CARTEIRA */}
+            <div className="space-y-3 pt-2 border-t border-slate-100">
               <div className="flex items-center justify-between">
-                <h4 className="font-extrabold text-xs text-slate-800">Histórico de Transações</h4>
-                <span className="text-[10px] text-slate-400">{userTxs.length} registo(s)</span>
+                <h4 className="font-extrabold text-xs text-slate-800 flex items-center gap-1.5">
+                  <span>Histórico de Transações</span>
+                  <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">
+                    Cloud Firestore
+                  </span>
+                </h4>
+                <span className="text-[10px] text-slate-400">
+                  {userTxs.length + userCarteiraTxs.length} registo(s)
+                </span>
               </div>
 
-              <div className="max-h-44 overflow-y-auto space-y-2 pr-1">
-                {userTxs.length === 0 ? (
-                  <p className="text-[11px] text-slate-400 text-center py-4">Sem histórico recente.</p>
-                ) : (
-                  userTxs.map((tx) => (
-                    <div
-                      key={tx.id}
-                      className="p-3 bg-slate-50/80 hover:bg-slate-50 rounded-2xl flex items-center justify-between text-xs border border-slate-200/70"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div
-                          className={`p-2 rounded-xl shrink-0 ${
-                            tx.status === "Pendente"
-                              ? "bg-amber-100 text-amber-900"
-                              : tx.type === "ENTRADA"
-                              ? "bg-emerald-100 text-emerald-800"
-                              : "bg-rose-100 text-rose-800"
-                          }`}
-                        >
-                          {tx.status === "Pendente" ? (
-                            <Clock className="w-4 h-4 text-amber-600 animate-spin" />
-                          ) : tx.type === "ENTRADA" ? (
-                            <ArrowDownLeft className="w-4 h-4" />
-                          ) : (
-                            <ArrowUpRight className="w-4 h-4" />
-                          )}
-                        </div>
-
-                        <div>
-                          <div className="font-extrabold text-slate-900 flex items-center gap-1.5">
-                            <span>{tx.title}</span>
-                          </div>
-                          <div className="text-[10px] text-slate-500 flex items-center gap-2">
-                            <span>{new Date(tx.timestamp).toLocaleString()}</span>
-                            <span>• Ref: {tx.reference}</span>
-                          </div>
-                        </div>
+              <div className="max-h-52 overflow-y-auto space-y-2 pr-1">
+                {/* 1. REGISTOS DE transacoes_carteira */}
+                {userCarteiraTxs.map((txc) => (
+                  <div
+                    key={txc.id}
+                    className="p-3 bg-amber-50/50 hover:bg-amber-50 rounded-2xl flex items-center justify-between text-xs border border-amber-200/80"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className={`p-2 rounded-xl shrink-0 ${
+                          txc.estado === "pendente"
+                            ? "bg-amber-200 text-amber-900"
+                            : txc.tipo === "deposito" || txc.tipo === "liberacao"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : "bg-slate-200 text-slate-800"
+                        }`}
+                      >
+                        {txc.estado === "pendente" ? (
+                          <Clock className="w-4 h-4 text-amber-700 animate-spin" />
+                        ) : txc.tipo === "deposito" || txc.tipo === "liberacao" ? (
+                          <ArrowDownLeft className="w-4 h-4" />
+                        ) : (
+                          <ArrowUpRight className="w-4 h-4" />
+                        )}
                       </div>
 
-                      <div className="text-right shrink-0">
-                        <div
-                          className={`font-black font-serif text-sm ${
-                            tx.type === "ENTRADA" ? "text-emerald-800" : "text-slate-900"
-                          }`}
-                        >
-                          {tx.type === "ENTRADA" ? "+" : "-"}{tx.amount} MT
+                      <div>
+                        <div className="font-extrabold text-slate-900 flex items-center gap-1.5">
+                          <span className="capitalize">{txc.tipo}</span>
+                          <span className="text-[10px] font-mono text-slate-500">({txc.referenciaExterna})</span>
                         </div>
-
-                        <span
-                          className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full inline-block mt-0.5 ${
-                            tx.status === "Pendente"
-                              ? "bg-amber-100 text-amber-900 border border-amber-200"
-                              : tx.status === "Pago"
-                              ? "bg-emerald-100 text-emerald-900"
-                              : "bg-slate-200 text-slate-700"
-                          }`}
-                        >
-                          {tx.status === "Pendente" ? "PENDENTE (Custódia)" : tx.status}
-                        </span>
+                        <div className="text-[10px] text-slate-500 flex items-center gap-2">
+                          <span>{new Date(txc.criadoEm).toLocaleString()}</span>
+                          <span className="text-amber-800 font-medium">/transacoes_carteira</span>
+                        </div>
                       </div>
                     </div>
-                  ))
+
+                    <div className="text-right shrink-0">
+                      <div
+                        className={`font-black font-serif text-sm ${
+                          txc.tipo === "deposito" || txc.tipo === "liberacao" ? "text-emerald-800" : "text-slate-900"
+                        }`}
+                      >
+                        {txc.tipo === "deposito" || txc.tipo === "liberacao" ? "+" : "-"}{txc.valor} MT
+                      </div>
+
+                      <span
+                        className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full inline-block mt-0.5 uppercase ${
+                          txc.estado === "pendente"
+                            ? "bg-amber-200 text-amber-950 border border-amber-300 animate-pulse"
+                            : txc.estado === "concluido"
+                            ? "bg-emerald-100 text-emerald-900"
+                            : "bg-rose-100 text-rose-900"
+                        }`}
+                      >
+                        {txc.estado}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+
+                {/* 2. LEGACY WALLET TRANSACTIONS */}
+                {userTxs.map((tx) => (
+                  <div
+                    key={tx.id}
+                    className="p-3 bg-slate-50/80 hover:bg-slate-50 rounded-2xl flex items-center justify-between text-xs border border-slate-200/70"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className={`p-2 rounded-xl shrink-0 ${
+                          tx.status === "Pendente"
+                            ? "bg-amber-100 text-amber-900"
+                            : tx.type === "ENTRADA"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : "bg-rose-100 text-rose-800"
+                        }`}
+                      >
+                        {tx.status === "Pendente" ? (
+                          <Clock className="w-4 h-4 text-amber-600 animate-spin" />
+                        ) : tx.type === "ENTRADA" ? (
+                          <ArrowDownLeft className="w-4 h-4" />
+                        ) : (
+                          <ArrowUpRight className="w-4 h-4" />
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="font-extrabold text-slate-900 flex items-center gap-1.5">
+                          <span>{tx.title}</span>
+                        </div>
+                        <div className="text-[10px] text-slate-500 flex items-center gap-2">
+                          <span>{new Date(tx.timestamp).toLocaleString()}</span>
+                          <span>• Ref: {tx.reference}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <div
+                        className={`font-black font-serif text-sm ${
+                          tx.type === "ENTRADA" ? "text-emerald-800" : "text-slate-900"
+                        }`}
+                      >
+                        {tx.type === "ENTRADA" ? "+" : "-"}{tx.amount} MT
+                      </div>
+
+                      <span
+                        className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full inline-block mt-0.5 ${
+                          tx.status === "Pendente"
+                            ? "bg-amber-100 text-amber-900 border border-amber-200"
+                            : tx.status === "Pago"
+                            ? "bg-emerald-100 text-emerald-900"
+                            : "bg-slate-200 text-slate-700"
+                        }`}
+                      >
+                        {tx.status === "Pendente" ? "PENDENTE (Custódia)" : tx.status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+
+                {userTxs.length === 0 && userCarteiraTxs.length === 0 && (
+                  <p className="text-[11px] text-slate-400 text-center py-4">Sem histórico recente.</p>
                 )}
               </div>
             </div>

@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { useAgro } from "../context/AgroContext";
+import { useLanguage } from "../context/LanguageContext";
+import { LanguageToggle } from "./LanguageToggle";
 import { MOZAMBIQUE_PROVINCES } from "../data/mozambiqueLocations";
 import { UserRole } from "../types";
 import { AgroMozLogo } from "./AgroMozLogo";
@@ -71,9 +73,13 @@ export const AuthScreen: React.FC = () => {
 
     if (!selectedRole) return;
 
-    const user = loginUser(loginPhone, loginPass, selectedRole);
-    if (!user) {
-      setLoginError("Credenciais inválidas ou utilizador não registado nesta categoria.");
+    try {
+      const user = loginUser(loginPhone, loginPass, selectedRole);
+      if (!user) {
+        setLoginError("Credenciais inválidas ou utilizador não registado nesta categoria.");
+      }
+    } catch (err: any) {
+      setLoginError(err.message || "Credenciais inválidas ou utilizador não encontrado.");
     }
   };
 
@@ -164,6 +170,11 @@ export const AuthScreen: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col justify-between py-8 px-4 sm:px-6 lg:px-8 relative overflow-hidden font-sans">
+      {/* Floating Bottom Language Selector */}
+      <div className="fixed bottom-4 left-4 sm:bottom-6 sm:left-8 z-30">
+        <LanguageToggle dropDirection="up" variant="pill" />
+      </div>
+
       {/* Background Decorative Gradients */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[500px] bg-gradient-to-b from-emerald-900/40 via-green-900/20 to-transparent pointer-events-none -z-10 blur-3xl" />
       <div className="absolute -top-24 -left-24 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -342,6 +353,9 @@ export const AuthScreen: React.FC = () => {
                 onClick={() => {
                   setSelectedRole("ADMIN");
                   setAuthMode("LOGIN");
+                  setLoginPhone("863983206");
+                  setLoginPass("123");
+                  setLoginError("");
                 }}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 hover:text-white border border-slate-700 text-xs font-medium transition-all"
               >
@@ -406,14 +420,27 @@ export const AuthScreen: React.FC = () => {
 
               {/* Mode Switcher Tabs (Only for non-ADMIN roles) */}
               {selectedRole === "ADMIN" ? (
-                <div className="mb-5 p-3.5 bg-purple-950/80 border border-purple-500/40 rounded-2xl text-xs text-purple-200 flex items-center gap-2.5">
-                  <ShieldCheck className="w-5 h-5 text-amber-400 shrink-0" />
-                  <div>
-                    <span className="font-extrabold text-amber-300 block">Acesso de Administrador Restrito</span>
-                    <span className="text-[11px] text-purple-200/90">
-                      O cadastro de novos administradores está desativado. Apenas o número autorizado (<strong>863983206</strong>) possui permissão de acesso.
-                    </span>
+                <div className="mb-5 p-3.5 bg-purple-950/80 border border-purple-500/40 rounded-2xl text-xs text-purple-200 flex flex-col gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <ShieldCheck className="w-5 h-5 text-amber-400 shrink-0" />
+                    <div>
+                      <span className="font-extrabold text-amber-300 block">Acesso de Administrador Restrito</span>
+                      <span className="text-[11px] text-purple-200/90">
+                        O cadastro de novos administradores está desativado. Apenas o número autorizado (<strong>863983206</strong>) possui permissão de acesso.
+                      </span>
+                    </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoginPhone("863983206");
+                      setLoginPass("123");
+                      setLoginError("");
+                    }}
+                    className="mt-1 py-1.5 px-3 bg-purple-900/90 hover:bg-purple-800 text-amber-300 border border-purple-400/40 rounded-xl text-[11px] font-bold transition-all text-center"
+                  >
+                    ⚡ Preencher Credenciais do Admin (863983206 / 123)
+                  </button>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 bg-slate-900/90 p-1 rounded-2xl mb-6 border border-slate-700">
@@ -496,7 +523,7 @@ export const AuthScreen: React.FC = () => {
                       <ArrowRight className="w-4 h-4" />
                     </button>
 
-                    {selectedRole !== "FARMER" && selectedRole !== "BUYER" && selectedRole !== "DRIVER" && users.filter((u) => u.role === selectedRole).length > 0 && (
+                    {users.filter((u) => u.role === selectedRole).length > 0 && (
                       <div className="pt-2 border-t border-slate-700/60 text-left">
                         <span className="text-[10px] font-bold text-slate-400 block mb-1.5 uppercase tracking-wider">
                           Contas Registadas ({selectedRole === "FARMER" ? "Agricultores" : selectedRole === "BUYER" ? "Compradores" : selectedRole === "DRIVER" ? "Transportadores" : "Admins"}):

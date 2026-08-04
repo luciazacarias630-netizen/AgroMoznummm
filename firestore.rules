@@ -12,6 +12,43 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    match /carteiras/{userId} {
+      // Utilizador só pode LER o próprio saldo, nunca alterar diretamente
+      allow read: if request.auth != null && request.auth.uid == userId;
+
+      // Nenhuma escrita é permitida do lado do cliente.
+      // Todas as alterações de saldo passam obrigatoriamente pelas
+      // Cloud Functions (Admin SDK), que ignoram estas regras.
+      allow write: if false;
+    }
+
+    match /carteira_plataforma/{docId} {
+      // Apenas utilizadores autenticados podem consultar a contabilidade/carteira da plataforma (ou restrito a admins)
+      allow read: if request.auth != null;
+
+      // Nenhuma escrita é permitida do lado do cliente.
+      // Atualizações de comissões e saldo em custódia são geridas exclusivamente pelo backend (Admin SDK)
+      allow write: if false;
+    }
+
+    match /transacoes_carteira/{transacaoId} {
+      // Utilizador só vê o próprio histórico de transações
+      allow read: if request.auth != null &&
+        resource.data.userId == request.auth.uid;
+
+      // Histórico só é criado pelo backend (Cloud Functions)
+      allow write: if false;
+    }
+
+    match /levantamentos/{levantamentoId} {
+      // Utilizador só vê os próprios pedidos de levantamento
+      allow read: if request.auth != null &&
+        resource.data.userId == request.auth.uid;
+
+      // Criação e atualização só pelo backend (via solicitarLevantamento/webhooks)
+      allow write: if false;
+    }
+
     match /products/{productId} {
       allow read, write: if true;
     }

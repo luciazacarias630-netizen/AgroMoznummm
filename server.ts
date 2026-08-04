@@ -153,6 +153,67 @@ app.post("/api/payments/initiate", (req, res) => {
   }, 1000);
 });
 
+// B2C Mobile Payout (Agro Moz -> M-Pesa / e-Mola do Agricultor)
+app.post("/api/b2c/withdraw", (req, res) => {
+  const { operadora, numero, msisdn, valor, amount, referencia, reference } = req.body;
+  const phone = numero || msisdn;
+  const val = valor || amount;
+  const ref = referencia || reference;
+
+  console.log(`[B2C Payout] Processando transferência de ${val} MZN via ${operadora} para ${phone} (Ref: ${ref})`);
+
+  setTimeout(() => {
+    res.json({
+      success: true,
+      operadora: operadora || "mpesa",
+      phone,
+      amount: val,
+      reference: ref,
+      status: "PROCESSING",
+      message: `Transferência B2C de ${val} MZN iniciada para +258 ${phone} via ${operadora || "M-Pesa"}.`,
+    });
+  }, 800);
+});
+
+// Webhook M-Pesa C2B (Confirmação de depósito de comprador para Agro Moz)
+app.post("/api/webhooks/mpesa-c2b", (req, res) => {
+  const { userId, valor, referencia, estado, transacaoId } = req.body;
+  console.log(`[Webhook M-Pesa C2B] Depósito confirmado para utilizador ${userId}: ${valor} MZN (Ref: ${referencia}, Estado: ${estado})`);
+  
+  // Em produção, esta função chama o processarDeposito na carteira do utilizador em Firestore
+  res.status(200).json({
+    status: "OK",
+    mensagem: "Depósito C2B M-Pesa processado com sucesso",
+    transacaoId: transacaoId || `tx-c2b-${Date.now()}`,
+  });
+});
+
+// Webhook e-Mola C2B (Confirmação de depósito)
+app.post("/api/webhooks/emola-c2b", (req, res) => {
+  const { userId, valor, referencia, estado, transacaoId } = req.body;
+  console.log(`[Webhook e-Mola C2B] Depósito confirmado para utilizador ${userId}: ${valor} MZN (Ref: ${referencia}, Estado: ${estado})`);
+  
+  res.status(200).json({
+    status: "OK",
+    mensagem: "Depósito C2B e-Mola processado com sucesso",
+    transacaoId: transacaoId || `tx-c2b-${Date.now()}`,
+  });
+});
+
+// Webhook M-Pesa B2C
+app.post("/api/webhooks/mpesa-b2c", (req, res) => {
+  const { referencia, estado } = req.body;
+  console.log(`[Webhook M-Pesa B2C] Recebido callback para ${referencia}: ${estado}`);
+  res.status(200).send("OK");
+});
+
+// Webhook e-Mola B2C
+app.post("/api/webhooks/emola-b2c", (req, res) => {
+  const { reference, estado } = req.body;
+  console.log(`[Webhook e-Mola B2C] Recebido callback para ${reference}: ${estado}`);
+  res.status(200).send("OK");
+});
+
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
