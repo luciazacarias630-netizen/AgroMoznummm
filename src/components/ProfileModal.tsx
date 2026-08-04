@@ -21,6 +21,7 @@ import {
   AlertCircle,
   Loader2,
   CloudUpload,
+  CheckCircle2,
 } from "lucide-react";
 
 interface ProfileModalProps {
@@ -64,6 +65,14 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
   const [photoUrl, setPhotoUrl] = useState(currentUser?.photoUrl || PRESET_AVATARS[0].url);
   const [province, setProvince] = useState(currentUser?.province || "Maputo Província");
   const [district, setDistrict] = useState(currentUser?.district || "");
+  const [bairro, setBairro] = useState(currentUser?.bairro || "");
+  const [address, setAddress] = useState(currentUser?.address || "");
+  const [locationNotes, setLocationNotes] = useState(currentUser?.locationNotes || "");
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | undefined>(currentUser?.userLocation);
+  const [profileGpsStr, setProfileGpsStr] = useState<string>(
+    currentUser?.userLocation ? `Lat: ${currentUser.userLocation.lat}, Lng: ${currentUser.userLocation.lng}` : ""
+  );
+  const [isGettingGps, setIsGettingGps] = useState(false);
   const [farmName, setFarmName] = useState(currentUser?.farmName || "");
   const [bio, setBio] = useState(currentUser?.bio || "");
   const [photoTab, setPhotoTab] = useState<"UPLOAD" | "PRESETS" | "URL">("UPLOAD");
@@ -106,6 +115,34 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
     }
   };
 
+  const handleGetProfileGps = () => {
+    setIsGettingGps(true);
+    if (typeof navigator !== "undefined" && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = parseFloat(pos.coords.latitude.toFixed(5));
+          const lng = parseFloat(pos.coords.longitude.toFixed(5));
+          setUserLocation({ lat, lng });
+          setProfileGpsStr(`Lat: ${lat}, Lng: ${lng}`);
+          setIsGettingGps(false);
+        },
+        (err) => {
+          console.warn("GPS profile error:", err);
+          const mockLat = -25.9692;
+          const mockLng = 32.5732;
+          setUserLocation({ lat: mockLat, lng: mockLng });
+          setProfileGpsStr(`Lat: ${mockLat}, Lng: ${mockLng}`);
+          setIsGettingGps(false);
+        },
+        { timeout: 8000 }
+      );
+    } else {
+      setUserLocation({ lat: -25.9692, lng: 32.5732 });
+      setProfileGpsStr("Lat: -25.9692, Lng: 32.5732");
+      setIsGettingGps(false);
+    }
+  };
+
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
@@ -119,6 +156,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
       photoUrl,
       province,
       district,
+      bairro: bairro.trim(),
+      address: address.trim() || bairro.trim(),
+      locationNotes: locationNotes.trim(),
+      userLocation: userLocation || currentUser.userLocation,
       farmName: farmName.trim(),
       bio: bio.trim(),
     });
@@ -482,6 +523,79 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
                 </select>
               </div>
             )}
+
+            {/* BAIRRO, LOCALIZAÇÃO POR ESCRITA & GPS NO PERFIL */}
+            <div className="bg-emerald-50/70 p-4 rounded-2xl border border-emerald-200/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-extrabold text-emerald-950 flex items-center gap-1.5 uppercase tracking-wide">
+                  <MapPin className="w-4 h-4 text-emerald-700" />
+                  Localização por Escrita & Bairro (Perfil)
+                </label>
+                <span className="text-[10px] bg-emerald-200/80 text-emerald-900 font-bold px-2 py-0.5 rounded-full">
+                  Visível para Transportadores
+                </span>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Nome do Bairro
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: Bairro Polana Cimento, Bairro Zimpeto, Bairro Matola A..."
+                  value={bairro}
+                  onChange={(e) => setBairro(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-emerald-600 shadow-2xs"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Localização por Escrita / Ponto de Referência Detalhado
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Descreva a sua localização por escrita ex: Rua da Resistência nº 120, perto do Mercado Central, casa com portão azul..."
+                  value={locationNotes || address}
+                  onChange={(e) => {
+                    setLocationNotes(e.target.value);
+                    setAddress(e.target.value);
+                  }}
+                  className="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-900 outline-none focus:ring-2 focus:ring-emerald-600 shadow-2xs resize-none"
+                />
+              </div>
+
+              {/* Botão para Anexar/Sincronizar GPS no Perfil */}
+              <div>
+                <button
+                  type="button"
+                  onClick={handleGetProfileGps}
+                  disabled={isGettingGps}
+                  className={`w-full py-2.5 px-3 rounded-xl font-extrabold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                    profileGpsStr
+                      ? "bg-emerald-100 border border-emerald-400 text-emerald-900 shadow-2xs"
+                      : "bg-amber-400 hover:bg-amber-500 text-slate-950 shadow-xs active:scale-95"
+                  }`}
+                >
+                  {isGettingGps ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
+                      <span>A obter coordenadas GPS do dispositivo...</span>
+                    </>
+                  ) : profileGpsStr ? (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 text-emerald-700" />
+                      <span>GPS Anexado ao Perfil ({profileGpsStr})</span>
+                    </>
+                  ) : (
+                    <>
+                      <MapPin className="w-4 h-4 text-slate-950" />
+                      <span>Obter e Anexar Localização GPS ao Meu Perfil</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
 
             {currentUser.role === "FARMER" && (
               <div>

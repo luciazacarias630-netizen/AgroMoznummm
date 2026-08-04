@@ -1244,10 +1244,17 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
       buyerId: buyer.id,
       buyerName: buyer.name,
       buyerPhone: orderData.buyerPhone || buyer.phone,
-      buyerAddress: orderData.deliveryAddressReference || buyer.address || `${buyer.district}, ${buyer.province}`,
-      buyerProvince: buyer.province,
-      buyerDistrict: buyer.district,
-      buyerLocation: { lat: -25.9692, lng: 32.5732 },
+      buyerAddress: orderData.deliveryAddressReference || buyer.locationNotes || buyer.address || `${buyer.district || 'KaMpfumo'}, ${buyer.province || 'Maputo Cidade'}`,
+      buyerProvince: orderData.buyerProvince || buyer.province || "Maputo Cidade",
+      buyerDistrict: orderData.buyerDistrict || buyer.district || "KaMpfumo",
+      buyerLocation: orderData.buyerLocation || buyer.userLocation || { lat: -25.9692, lng: 32.5732 },
+      destinoEntrega: orderData.destinoEntrega || {
+        provincia: orderData.buyerProvince || buyer.province || "Maputo Cidade",
+        distrito: orderData.buyerDistrict || buyer.district || "KaMpfumo",
+        endereco: orderData.deliveryAddressReference || buyer.locationNotes || buyer.address || "Bairro Central",
+        lat: (orderData.buyerLocation || buyer.userLocation || { lat: -25.9692, lng: 32.5732 }).lat,
+        lng: (orderData.buyerLocation || buyer.userLocation || { lat: -25.9692, lng: 32.5732 }).lng,
+      },
       farmerId: orderData.farmerId || "",
       farmerName: orderData.farmerName || "Agricultor",
       farmerPhone: orderData.farmerPhone || "",
@@ -1875,17 +1882,25 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateDriverLocation = (orderId: string, location: { lat: number; lng: number }) => {
+    const updatedAt = new Date().toISOString();
     setOrders((prev) =>
       prev.map((o) =>
         o.id === orderId
           ? {
               ...o,
               driverCurrentLocation: location,
-              updatedAt: new Date().toISOString(),
+              updatedAt,
             }
           : o
       )
     );
+    if (db) {
+      setDoc(
+        doc(db, "orders", orderId),
+        { driverCurrentLocation: location, updatedAt },
+        { merge: true }
+      ).catch((e) => console.log("Firestore updateDriverLocation error:", e));
+    }
   };
 
   const sendMessage = (receiverId: string, content: string, imageUrl?: string) => {

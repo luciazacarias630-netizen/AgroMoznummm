@@ -102,11 +102,14 @@ export const BuyerMarketplace: React.FC<BuyerMarketplaceProps> = ({
   const [paymentPhone, setPaymentPhone] = useState<string>(currentUser?.phone || "");
   const [deliveryProvince, setDeliveryProvince] = useState<string>(currentUser?.province || "Maputo Cidade");
   const [deliveryDistrict, setDeliveryDistrict] = useState<string>(currentUser?.district || "KaMpfumo");
-  const [deliveryNeighborhood, setDeliveryNeighborhood] = useState<string>(currentUser?.address || "");
+  const [deliveryNeighborhood, setDeliveryNeighborhood] = useState<string>(currentUser?.bairro || currentUser?.locationNotes || currentUser?.address || "");
   const [deliveryRef, setDeliveryRef] = useState<string>("");
-  const [gpsCoords, setGpsCoords] = useState<string>("");
+  const [parsedGpsObj, setParsedGpsObj] = useState<{ lat: number; lng: number } | null>(currentUser?.userLocation || null);
+  const [gpsCoords, setGpsCoords] = useState<string>(
+    currentUser?.userLocation ? `Lat: ${currentUser.userLocation.lat}, Lng: ${currentUser.userLocation.lng}` : ""
+  );
   const [isGettingGps, setIsGettingGps] = useState<boolean>(false);
-  const [gpsCaptured, setGpsCaptured] = useState<boolean>(false);
+  const [gpsCaptured, setGpsCaptured] = useState<boolean>(!!currentUser?.userLocation);
   const [isSubmittingOrder, setIsSubmittingOrder] = useState<boolean>(false);
   const [completedOrderTx, setCompletedOrderTx] = useState<any | null>(null);
   const [paymentStep, setPaymentStep] = useState<"FORM" | "VERIFYING" | "PIN_PROMPT" | "SUCCESS">("FORM");
@@ -119,25 +122,30 @@ export const BuyerMarketplace: React.FC<BuyerMarketplaceProps> = ({
     if (typeof navigator !== "undefined" && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          const lat = pos.coords.latitude.toFixed(4);
-          const lng = pos.coords.longitude.toFixed(4);
-          const coordsStr = `Lat: ${lat}, Lng: ${lng}`;
+          const latNum = parseFloat(pos.coords.latitude.toFixed(5));
+          const lngNum = parseFloat(pos.coords.longitude.toFixed(5));
+          const coordsStr = `Lat: ${latNum}, Lng: ${lngNum}`;
           setGpsCoords(coordsStr);
+          setParsedGpsObj({ lat: latNum, lng: lngNum });
           setGpsCaptured(true);
           setIsGettingGps(false);
         },
         (err) => {
           console.warn("GPS error:", err);
-          const mockLat = (-25.9692 + (Math.random() - 0.5) * 0.02).toFixed(4);
-          const mockLng = (32.5732 + (Math.random() - 0.5) * 0.02).toFixed(4);
+          const mockLat = parseFloat((-25.9692 + (Math.random() - 0.5) * 0.02).toFixed(5));
+          const mockLng = parseFloat((32.5732 + (Math.random() - 0.5) * 0.02).toFixed(5));
           setGpsCoords(`Lat: ${mockLat}, Lng: ${mockLng}`);
+          setParsedGpsObj({ lat: mockLat, lng: mockLng });
           setGpsCaptured(true);
           setIsGettingGps(false);
         },
         { timeout: 8000 }
       );
     } else {
-      setGpsCoords("Lat: -25.9692, Lng: 32.5732");
+      const defLat = -25.9692;
+      const defLng = 32.5732;
+      setGpsCoords(`Lat: ${defLat}, Lng: ${defLng}`);
+      setParsedGpsObj({ lat: defLat, lng: defLng });
       setGpsCaptured(true);
       setIsGettingGps(false);
     }
@@ -219,6 +227,8 @@ export const BuyerMarketplace: React.FC<BuyerMarketplaceProps> = ({
   const handleAuthorizePinAndComplete = async (pinEntered?: string) => {
     if (!selectedProduct) return;
 
+    const locObj = parsedGpsObj || currentUser?.userLocation || { lat: -25.9692, lng: 32.5732 };
+
     setIsSubmittingOrder(true);
     setPinError("");
     try {
@@ -235,7 +245,17 @@ export const BuyerMarketplace: React.FC<BuyerMarketplaceProps> = ({
         totalAmount: selectedProduct.pricePerUnit * buyQuantity + 150,
         paymentMethod,
         buyerPhone: paymentPhone || currentUser?.phone || "841234567",
-        deliveryAddressReference: deliveryRef || "Maputo Cidade",
+        buyerProvince: deliveryProvince,
+        buyerDistrict: deliveryDistrict,
+        buyerLocation: locObj,
+        destinoEntrega: {
+          provincia: deliveryProvince,
+          distrito: deliveryDistrict,
+          endereco: deliveryNeighborhood || currentUser?.locationNotes || currentUser?.address || "Bairro Central",
+          lat: locObj.lat,
+          lng: locObj.lng,
+        },
+        deliveryAddressReference: deliveryRef || `${deliveryProvince}, ${deliveryDistrict} - ${deliveryNeighborhood || "Bairro Central"}`,
       });
 
       setCompletedOrderTx(created);
@@ -256,6 +276,16 @@ export const BuyerMarketplace: React.FC<BuyerMarketplaceProps> = ({
           totalAmount: (selectedProduct.pricePerUnit || 100) * (buyQuantity || 1) + 150,
           paymentMethod: paymentMethod || "M-Pesa",
           buyerPhone: paymentPhone || "841234567",
+          buyerProvince: deliveryProvince,
+          buyerDistrict: deliveryDistrict,
+          buyerLocation: locObj,
+          destinoEntrega: {
+            provincia: deliveryProvince,
+            distrito: deliveryDistrict,
+            endereco: deliveryNeighborhood || "Bairro Central",
+            lat: locObj.lat,
+            lng: locObj.lng,
+          },
           deliveryAddressReference: deliveryRef || "Maputo Cidade",
         });
         setCompletedOrderTx(fallbackCreated);

@@ -24,6 +24,9 @@ export interface UserProfile {
   province: string;
   district: string;
   address?: string;
+  bairro?: string;
+  locationNotes?: string;
+  userLocation?: { lat: number; lng: number };
   localidade?: string;
   online: boolean;
   lastSeen?: string;

@@ -66,8 +66,8 @@ export const RealtimeGpsMap: React.FC<RealtimeGpsMapProps> = ({
   };
 
   const destPos = {
-    lat: order.buyerLocation?.lat || MOZ_DEFAULT_DEST.lat,
-    lng: order.buyerLocation?.lng || MOZ_DEFAULT_DEST.lng,
+    lat: order.buyerLocation?.lat || order.destinoEntrega?.lat || MOZ_DEFAULT_DEST.lat,
+    lng: order.buyerLocation?.lng || order.destinoEntrega?.lng || MOZ_DEFAULT_DEST.lng,
   };
 
   const initialDriverPos = order.driverCurrentLocation || {
