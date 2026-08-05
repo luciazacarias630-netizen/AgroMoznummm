@@ -217,6 +217,17 @@ export const Header: React.FC<HeaderProps> = ({
                 </button>
               )}
 
+              {/* CHAT DIRECT BUTTON */}
+              {onOpenChat && (
+                <button
+                  onClick={onOpenChat}
+                  className="p-2 text-slate-600 hover:text-emerald-800 hover:bg-emerald-50 rounded-xl transition-all relative"
+                  title="Abrir Mensagens e Conversas"
+                >
+                  <MessageSquare className="w-5 h-5 text-emerald-700" />
+                </button>
+              )}
+
               {/* NOTIFICATIONS BELL BUTTON & DROPDOWN */}
               <div className="relative">
                 <button

@@ -65,6 +65,14 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    match /conversas/{conversaId} {
+      allow read, write: if true;
+
+      match /mensagens/{mensagemId} {
+        allow read, write: if true;
+      }
+    }
+
     match /crash_reports/{reportId} {
       allow read, write: if true;
     }

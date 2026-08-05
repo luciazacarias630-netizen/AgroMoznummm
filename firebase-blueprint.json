@@ -109,6 +109,27 @@
         "atualizadoEm": { "type": "string" }
       }
     },
+    "conversas": {
+      "fields": {
+        "id": { "type": "string" },
+        "participantes": { "type": "array" },
+        "compradorId": { "type": "string" },
+        "vendedorId": { "type": "string" },
+        "produtoId": { "type": "string" },
+        "produtoNome": { "type": "string" },
+        "ultimaMensagem": { "type": "string" },
+        "ultimaMensagemEm": { "type": "string" }
+      }
+    },
+    "mensagens_conversa": {
+      "fields": {
+        "id": { "type": "string" },
+        "remetenteId": { "type": "string" },
+        "texto": { "type": "string" },
+        "lida": { "type": "boolean" },
+        "criadoEm": { "type": "string" }
+      }
+    },
     "levantamentos": {
       "fields": {
         "userId": { "type": "string" },
@@ -154,6 +175,14 @@
     "/transacoes/{transacaoId}/propostas/{propostaId}": {
       "schema": "propostas",
       "description": "Propostas de transporte para a transação"
+    },
+    "/conversas/{conversaId}": {
+      "schema": "conversas",
+      "description": "Conversas ativas entre compradores e vendedores iniciadas a partir de produtos"
+    },
+    "/conversas/{conversaId}/mensagens/{mensagemId}": {
+      "schema": "mensagens_conversa",
+      "description": "Mensagens trocadas dentro de uma conversa"
     }
   }
 }

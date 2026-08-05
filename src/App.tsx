@@ -49,7 +49,14 @@ export function App() {
   });
 
   // Modals state
-  const [chatPartner, setChatPartner] = useState<{ id: string; name: string } | null>(null);
+  const [chatPartner, setChatPartner] = useState<{
+    id?: string;
+    name?: string;
+    productId?: string;
+    productName?: string;
+    productImage?: string;
+    conversaId?: string;
+  } | null>(null);
   const [showWallet, setShowWallet] = useState(false);
   const [trackingOrderId, setTrackingOrderId] = useState<string | null>(null);
   const [showTour, setShowTour] = useState(false);
@@ -79,7 +86,7 @@ export function App() {
       <TopToastNotification
         onOpenTrackingModal={(orderId) => setTrackingOrderId(orderId)}
         onOpenWallet={() => setShowWallet(true)}
-        onOpenChat={() => setChatPartner({ id: "farmer-1", name: "Mateus Cossa" })}
+        onOpenChat={() => setChatPartner({ id: "", name: "" })}
       />
 
       {/* Device Notification Permission Banner Prompt */}
@@ -89,7 +96,7 @@ export function App() {
       <Header
         onOpenWallet={() => setShowWallet(true)}
         onOpenChat={() => {
-          setChatPartner({ id: "farmer-1", name: "Mateus Cossa" });
+          setChatPartner({ id: "", name: "" });
         }}
         onOpenTour={() => setShowTour(true)}
         onOpenProfile={() => setShowProfile(true)}
@@ -197,7 +204,9 @@ export function App() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {activeTab === "MARKET" && currentUser.role !== "DRIVER" && (
           <BuyerMarketplace
-            onOpenChatWith={(id, name) => setChatPartner({ id, name })}
+            onOpenChatWith={(id, name, productId, productName, productImage) =>
+              setChatPartner({ id, name, productId, productName, productImage })
+            }
             onOpenOrderTracking={(ordId) => setTrackingOrderId(ordId)}
           />
         )}
@@ -220,6 +229,10 @@ export function App() {
         <ChatModal
           partnerId={chatPartner.id}
           partnerName={chatPartner.name}
+          productId={chatPartner.productId}
+          productName={chatPartner.productName}
+          productImage={chatPartner.productImage}
+          conversaId={chatPartner.conversaId}
           onClose={() => setChatPartner(null)}
         />
       )}

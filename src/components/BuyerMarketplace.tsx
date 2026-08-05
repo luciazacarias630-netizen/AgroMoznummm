@@ -36,7 +36,13 @@ import {
 } from "lucide-react";
 
 interface BuyerMarketplaceProps {
-  onOpenChatWith: (farmerId: string, farmerName: string) => void;
+  onOpenChatWith: (
+    farmerId: string,
+    farmerName: string,
+    productId?: string,
+    productName?: string,
+    productImage?: string
+  ) => void;
   onOpenOrderTracking: (orderId: string) => void;
 }
 
@@ -176,9 +182,8 @@ export const BuyerMarketplace: React.FC<BuyerMarketplaceProps> = ({
 
     const matchesCategory = selectedCategory === "TODOS" || p.category === selectedCategory;
     const matchesProvince = selectedProvince === "TODAS" || p.province === selectedProvince;
-    const matchesPrice = p.pricePerUnit <= maxPrice;
 
-    return matchesSearch && matchesCategory && matchesProvince && matchesPrice;
+    return matchesSearch && matchesCategory && matchesProvince;
   });
 
   const handleInitiatePurchase = (product: Product) => {
@@ -357,56 +362,7 @@ export const BuyerMarketplace: React.FC<BuyerMarketplaceProps> = ({
       {/* CATALOG VIEW */}
       {marketplaceView === "CATALOG" && (
         <>
-          {/* 1. WEATHER & NEWS BANNER */}
-          <div className="bg-gradient-to-r from-emerald-900 via-emerald-800 to-green-900 text-white rounded-3xl p-6 shadow-xl relative overflow-hidden">
-        <div className="relative z-10 grid grid-cols-1 lg:grid-cols-3 gap-6 items-center">
-          {/* Welcome Title */}
-          <div className="lg:col-span-2 space-y-2">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-400/20 text-amber-300 rounded-full text-xs font-semibold border border-amber-400/30">
-              <Sparkles className="w-3.5 h-3.5" /> Mercado Agrícola Digital Moçambique
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold font-serif tracking-tight text-white">
-              Produtos frescos direto das machambas nacionais
-            </h1>
-            <p className="text-xs text-emerald-100 max-w-xl">
-              Compre hortaliças, cereais e tubérculos diretamente dos agricultores registados em Maputo e em todas as províncias de Moçambique.
-            </p>
-
-            {/* News Ticker */}
-            <div className="mt-4 pt-3 border-t border-emerald-700/60 flex items-center gap-2 text-xs text-emerald-200 overflow-x-auto">
-              <Newspaper className="w-4 h-4 text-amber-400 shrink-0" />
-              <span className="font-bold text-amber-300 shrink-0">Notícias:</span>
-              <span className="truncate">{newsTicker[0]}</span>
-            </div>
-          </div>
-
-          {/* Weather Widget Slider */}
-          <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/20 text-xs space-y-2">
-            <div className="flex items-center justify-between text-amber-300 font-bold border-b border-white/10 pb-1.5">
-              <span className="flex items-center gap-1">
-                <CloudSun className="w-4 h-4" /> Previsão do Tempo
-              </span>
-              <span className="text-[10px] text-emerald-200">Moçambique Hoje</span>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {weatherList.slice(0, 4).map((w, idx) => (
-                <div key={idx} className="p-2 bg-black/20 rounded-xl flex items-center justify-between">
-                  <div>
-                    <div className="font-semibold text-white truncate max-w-[90px]">{w.province}</div>
-                    <div className="text-[10px] text-emerald-200">{w.condition}</div>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-base font-bold text-amber-300">{w.temp}°C</span>
-                    <span className="text-xs block">{w.icon}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 2. SEARCH & MULTI-FILTER BAR WITH PROVINCE SELECTOR */}
+          {/* 2. SEARCH & MULTI-FILTER BAR WITH PROVINCE SELECTOR */}
       <div className="bg-white p-4 sm:p-6 rounded-3xl shadow-sm border border-emerald-100 space-y-4">
         {/* Quick Province Region Bar Header */}
         <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100">
@@ -514,24 +470,8 @@ export const BuyerMarketplace: React.FC<BuyerMarketplaceProps> = ({
           </div>
         </div>
 
-        {/* Price Slider Filter & Status */}
+        {/* Region Status Bar */}
         <div className="flex flex-wrap items-center justify-between text-xs pt-2 border-t border-slate-100 gap-4">
-          <div className="flex items-center gap-3 w-full sm:w-auto">
-            <span className="text-slate-500 font-medium">Preço máximo:</span>
-            <input
-              type="range"
-              min="50"
-              max="5000"
-              step="50"
-              value={maxPrice}
-              onChange={(e) => setMaxPrice(Number(e.target.value))}
-              className="accent-emerald-700 w-40"
-            />
-            <span className="font-bold text-emerald-900 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
-              {maxPrice} MT
-            </span>
-          </div>
-
           <div className="text-xs text-slate-500 font-medium flex items-center gap-1.5">
             <span>Região ativa:</span>
             <span className="font-extrabold text-emerald-900 bg-emerald-100 px-2 py-0.5 rounded-md border border-emerald-200">
@@ -673,11 +613,12 @@ export const BuyerMarketplace: React.FC<BuyerMarketplaceProps> = ({
                 {/* 7. ACTION BUTTONS (CHAT & BUY M-PESA/E-MOLA) */}
                 <div className="grid grid-cols-2 gap-1.5 mt-auto">
                   <button
-                    onClick={() => onOpenChatWith(p.farmerId, p.farmerName)}
-                    className="py-2 px-2 bg-slate-100 hover:bg-emerald-50 text-emerald-900 rounded-xl text-[11px] font-extrabold flex items-center justify-center gap-1 transition-all cursor-pointer active:scale-95"
+                    onClick={() => onOpenChatWith(p.farmerId, p.farmerName, p.id, p.name, p.images?.[0])}
+                    className="py-2 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-950 border border-emerald-200/80 rounded-xl text-[11px] font-extrabold flex items-center justify-center gap-1 transition-all cursor-pointer active:scale-95"
+                    title="Contactar vendedor sobre este produto"
                   >
-                    <MessageCircle className="w-3.5 h-3.5 text-emerald-700" />
-                    <span>Chat</span>
+                    <MessageCircle className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                    <span className="truncate">Contactar Vendedor</span>
                   </button>
 
                   <button

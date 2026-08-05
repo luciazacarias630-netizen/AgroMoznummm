@@ -16,12 +16,19 @@ import {
   TipoTransacaoCarteira,
   EstadoTransacaoCarteira,
   Levantamento,
+  Conversa,
+  MensagemConversa,
 } from "../types";
 import { fcmService } from "../services/fcmService";
 import { crashlytics } from "../services/crashlyticsService";
 import { solicitarLevantamento, LEVANTAMENTO_MINIMO } from "../services/levantamento";
 import { db } from "../firebase";
 import { collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot } from "firebase/firestore";
+
+const cleanForFirestore = <T,>(data: T): T => {
+  if (!data || typeof data !== "object") return data;
+  return JSON.parse(JSON.stringify(data));
+};
 
 interface AgroContextType {
   currentUser: UserProfile | null;
@@ -74,8 +81,13 @@ interface AgroContextType {
   releaseEscrowPayment: (orderId: string, reason?: string) => void;
   refundEscrowPayment: (orderId: string, reason: string) => void;
 
-  // Chat Actions
+  // Chat & Conversation Actions
+  conversas: Conversa[];
+  mensagensConversa: MensagemConversa[];
   sendMessage: (receiverId: string, content: string, imageUrl?: string) => void;
+  iniciarOuObterConversa: (produtoId: string, vendedorId: string, produtoNome: string, produtoImagem?: string) => Promise<Conversa>;
+  enviarMensagemConversa: (conversaId: string, texto: string, imageUrl?: string) => Promise<void>;
+  marcarMensagensComoLidas: (conversaId: string) => Promise<void>;
 
   // Wallet & Admin Actions
   approveFarmerFee: (farmerId: string) => void;
@@ -337,6 +349,24 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const saved = localStorage.getItem("agromoz_chats");
     return saved ? JSON.parse(saved) : [];
   });
+
+  const [conversas, setConversas] = useState<Conversa[]>(() => {
+    const saved = localStorage.getItem("agromoz_conversas");
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem("agromoz_conversas", JSON.stringify(conversas));
+  }, [conversas]);
+
+  const [mensagensConversa, setMensagensConversa] = useState<MensagemConversa[]>(() => {
+    const saved = localStorage.getItem("agromoz_mensagens_conversa");
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem("agromoz_mensagens_conversa", JSON.stringify(mensagensConversa));
+  }, [mensagensConversa]);
 
   const [transactions, setTransactions] = useState<WalletTransaction[]>(() => {
     const saved = localStorage.getItem("agromoz_txs");
@@ -651,6 +681,16 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }, (err) => console.log("Firestore notificacoes sync:", err));
 
+    const unsubConversas = onSnapshot(collection(db, "conversas"), (snapshot) => {
+      if (!snapshot.empty) {
+        const items: Conversa[] = [];
+        snapshot.forEach((docSnap) => {
+          items.push({ id: docSnap.id, ...(docSnap.data() as Conversa) });
+        });
+        setConversas(items);
+      }
+    }, (err) => console.log("Firestore conversas sync:", err));
+
     return () => {
       unsubProds();
       unsubOrders();
@@ -660,6 +700,7 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
       unsubTransCarteira();
       unsubLevantamentos();
       unsubNotifs();
+      unsubConversas();
     };
   }, []);
 
@@ -683,7 +724,7 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (db) {
       try {
-        await setDoc(doc(db, "carteiras", userId), updatedCarteira, { merge: true });
+        await setDoc(doc(db, "carteiras", userId), cleanForFirestore(updatedCarteira), { merge: true });
       } catch (e) {
         console.error("Erro ao sincronizar carteira no Firestore:", e);
       }
@@ -715,7 +756,7 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (db) {
       try {
-        await setDoc(doc(db, "transacoes_carteira", id), newTx);
+        await setDoc(doc(db, "transacoes_carteira", id), cleanForFirestore(newTx));
       } catch (e) {
         console.error("Erro ao guardar transacao_carteira no Firestore:", e);
       }
@@ -770,7 +811,7 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Save notification doc to Firestore
     if (db) {
-      setDoc(doc(db, "notificacoes", newNotif.id), newNotif).catch((e) =>
+      setDoc(doc(db, "notificacoes", newNotif.id), cleanForFirestore(newNotif)).catch((e) =>
         console.error("Erro ao guardar notificação no Firestore:", e)
       );
     }
@@ -1005,7 +1046,7 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUsers((prev) => [...prev, user]);
       setCurrentUser(user);
       if (db) {
-        setDoc(doc(db, "users", user.id), user).catch((e) => {
+        setDoc(doc(db, "users", user.id), cleanForFirestore(user)).catch((e) => {
           crashlytics.logAuthError(e, "register", { action: "firestore_sync", userId: user.id });
         });
       }
@@ -1030,7 +1071,7 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setCurrentUser(updated);
     setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updated : u)));
     if (db) {
-      setDoc(doc(db, "users", updated.id), updated).catch((e) => console.log("Firestore updateUserProfile error:", e));
+      setDoc(doc(db, "users", updated.id), cleanForFirestore(updated)).catch((e) => console.log("Firestore updateUserProfile error:", e));
     }
 
     pushNotification({
@@ -1103,7 +1144,7 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setProducts((prev) => [newProd, ...prev]);
       if (db) {
-        setDoc(doc(db, "products", newProd.id), newProd).catch((e) => {
+        setDoc(doc(db, "products", newProd.id), cleanForFirestore(newProd)).catch((e) => {
           crashlytics.logProductError(e, "publish", { action: "firestore_sync", productId: newProd.id });
         });
       }
@@ -1124,7 +1165,7 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const status = qty > 10 ? "Disponibile" : qty > 0 ? "Pouca quantidade" : "Esgotado";
             const updated = { ...p, ...updatedFields, availableQuantity: qty, status };
             if (db) {
-              setDoc(doc(db, "products", id), updated).catch((e) => {
+              setDoc(doc(db, "products", id), cleanForFirestore(updated)).catch((e) => {
                 crashlytics.logProductError(e, "update", { action: "firestore_sync", productId: id });
               });
             }
@@ -1207,7 +1248,7 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setMachambas((prev) => [newM, ...prev]);
     if (db) {
-      setDoc(doc(db, "machambas", newM.id), newM).catch((e) => console.log("Firestore addMachamba error:", e));
+      setDoc(doc(db, "machambas", newM.id), cleanForFirestore(newM)).catch((e) => console.log("Firestore addMachamba error:", e));
     }
     addNotification(`Nova Machamba registada: ${newM.name}`);
     return newM;
@@ -1284,7 +1325,7 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setOrders((prev) => [newOrder, ...prev]);
     if (db) {
-      setDoc(doc(db, "orders", newOrder.id), newOrder).catch((e) => console.log("Firestore createOrder error:", e));
+      setDoc(doc(db, "orders", newOrder.id), cleanForFirestore(newOrder)).catch((e) => console.log("Firestore createOrder error:", e));
     }
 
     // Update stock in real-time
@@ -1789,7 +1830,7 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (db) {
       setDoc(
         doc(db, "transacoes", transacaoId, "propostas", newProposal.id),
-        newProposal
+        cleanForFirestore(newProposal)
       ).catch((e) => console.log("Firestore submitProposal error:", e));
     }
 
@@ -1897,7 +1938,7 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (db) {
       setDoc(
         doc(db, "orders", orderId),
-        { driverCurrentLocation: location, updatedAt },
+        cleanForFirestore({ driverCurrentLocation: location, updatedAt }),
         { merge: true }
       ).catch((e) => console.log("Firestore updateDriverLocation error:", e));
     }
@@ -1920,7 +1961,7 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setChats((prev) => [...prev, msg]);
     if (db) {
-      setDoc(doc(db, "messages", msg.id), msg).catch((e) => console.log("Firestore sendMessage error:", e));
+      setDoc(doc(db, "messages", msg.id), cleanForFirestore(msg)).catch((e) => console.log("Firestore sendMessage error:", e));
     }
 
     // Push notification to Receiver
@@ -1939,6 +1980,191 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
         prev.map((m) => (m.id === msg.id ? { ...m, status: "Visualizada" } : m))
       );
     }, 1200);
+  };
+
+  const iniciarOuObterConversa = async (
+    produtoId: string,
+    vendedorId: string,
+    produtoNome: string,
+    produtoImagem?: string
+  ): Promise<Conversa> => {
+    if (!currentUser) throw new Error("Utilizador não autenticado");
+
+    const compradorId = currentUser.id;
+
+    let existing = conversas.find(
+      (c) =>
+        c.produtoId === produtoId &&
+        c.participantes?.includes(compradorId) &&
+        c.participantes?.includes(vendedorId)
+    );
+
+    if (existing) {
+      return existing;
+    }
+
+    const conversaId = `conv_${compradorId}_${vendedorId}_${produtoId}`;
+    const agora = new Date().toISOString();
+
+    const novaConversa: Conversa = {
+      id: conversaId,
+      participantes: [compradorId, vendedorId],
+      compradorId,
+      vendedorId,
+      produtoId,
+      produtoNome,
+      produtoImagem: produtoImagem || "",
+      ultimaMensagem: `Olá, tenho interesse em ${produtoNome}.`,
+      ultimaMensagemEm: agora,
+      naoLidas: {
+        [compradorId]: 0,
+        [vendedorId]: 0,
+      },
+      criadoEm: agora,
+    };
+
+    setConversas((prev) => [novaConversa, ...prev.filter((c) => c.id !== conversaId)]);
+
+    if (db) {
+      try {
+        await setDoc(
+          doc(db, "conversas", conversaId),
+          cleanForFirestore({
+            ...novaConversa,
+            [`naoLidas_${compradorId}`]: 0,
+            [`naoLidas_${vendedorId}`]: 0,
+          }),
+          { merge: true }
+        );
+      } catch (e) {
+        console.error("Erro ao criar conversa no Firestore:", e);
+      }
+    }
+
+    return novaConversa;
+  };
+
+  const enviarMensagemConversa = async (
+    conversaId: string,
+    texto: string,
+    imageUrl?: string
+  ): Promise<void> => {
+    if (!currentUser) return;
+
+    const conversa = conversas.find((c) => c.id === conversaId);
+    const destinatarioId =
+      conversa?.participantes.find((p) => p !== currentUser.id) ||
+      (conversa?.vendedorId === currentUser.id ? conversa?.compradorId : conversa?.vendedorId) ||
+      "";
+
+    const msgId = `msg-${Date.now()}`;
+    const agora = new Date().toISOString();
+
+    const novaMensagem: MensagemConversa = {
+      id: msgId,
+      conversaId,
+      remetenteId: currentUser.id,
+      remetenteNome: currentUser.name,
+      texto,
+      imageUrl,
+      lida: false,
+      criadoEm: agora,
+    };
+
+    setMensagensConversa((prev) => [...prev, novaMensagem]);
+
+    setConversas((prev) =>
+      prev.map((c) => {
+        if (c.id === conversaId) {
+          const currentUnread = (c.naoLidas && c.naoLidas[destinatarioId]) || 0;
+          return {
+            ...c,
+            ultimaMensagem: texto || "Imagem enviada",
+            ultimaMensagemEm: agora,
+            naoLidas: {
+              ...(c.naoLidas || {}),
+              [destinatarioId]: currentUnread + 1,
+            },
+          };
+        }
+        return c;
+      })
+    );
+
+    if (db) {
+      try {
+        await setDoc(
+          doc(db, "conversas", conversaId, "mensagens", msgId),
+          cleanForFirestore(novaMensagem)
+        );
+
+        const currentUnread = (conversa?.naoLidas && conversa.naoLidas[destinatarioId]) || 0;
+        const newUnread = currentUnread + 1;
+
+        await setDoc(
+          doc(db, "conversas", conversaId),
+          cleanForFirestore({
+            ultimaMensagem: texto || "Imagem enviada",
+            ultimaMensagemEm: agora,
+            [`naoLidas_${destinatarioId}`]: newUnread,
+            naoLidas: {
+              ...(conversa?.naoLidas || {}),
+              [destinatarioId]: newUnread,
+            },
+          }),
+          { merge: true }
+        );
+      } catch (err) {
+        console.error("Erro ao enviar mensagem na conversa:", err);
+      }
+    }
+
+    if (destinatarioId) {
+      pushNotification({
+        title: `💬 Mensagem de ${currentUser.name}`,
+        message: texto.length > 50 ? `${texto.substring(0, 50)}...` : texto || "Anexo enviado",
+        type: "MESSAGE",
+        category: "CHAT",
+        targetUserId: destinatarioId,
+        relatedId: conversaId,
+      });
+    }
+  };
+
+  const marcarMensagensComoLidas = async (conversaId: string): Promise<void> => {
+    if (!currentUser) return;
+
+    setConversas((prev) =>
+      prev.map((c) => {
+        if (c.id === conversaId) {
+          return {
+            ...c,
+            naoLidas: {
+              ...(c.naoLidas || {}),
+              [currentUser.id]: 0,
+            },
+          };
+        }
+        return c;
+      })
+    );
+
+    if (db) {
+      try {
+        await setDoc(
+          doc(db, "conversas", conversaId),
+          cleanForFirestore({
+            [`naoLidas_${currentUser.id}`]: 0,
+            naoLidas: {
+              [currentUser.id]: 0,
+            },
+          }),
+          { merge: true }
+        );
+      } catch (e) {
+        console.error("Erro ao marcar mensagens como lidas:", e);
+      }
+    }
   };
 
   const approveFarmerFee = (farmerId: string) => {
@@ -2195,6 +2421,11 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
         releaseEscrowPayment,
         refundEscrowPayment,
         sendMessage,
+        conversas,
+        mensagensConversa,
+        iniciarOuObterConversa,
+        enviarMensagemConversa,
+        marcarMensagensComoLidas,
         approveFarmerFee,
         rejectFarmerFee,
         verifyFarmerBiIdentity,

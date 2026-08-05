@@ -179,6 +179,31 @@ export interface Order {
   updatedAt: string;
 }
 
+export interface Conversa {
+  id: string;
+  participantes: string[];
+  compradorId?: string;
+  vendedorId?: string;
+  produtoId: string;
+  produtoNome: string;
+  produtoImagem?: string;
+  ultimaMensagem: string;
+  ultimaMensagemEm: string;
+  naoLidas?: Record<string, number>;
+  criadoEm?: string;
+}
+
+export interface MensagemConversa {
+  id: string;
+  conversaId: string;
+  remetenteId: string;
+  remetenteNome?: string;
+  texto: string;
+  imageUrl?: string;
+  lida: boolean;
+  criadoEm: string;
+}
+
 export interface ChatMessage {
   id: string;
   senderId: string;

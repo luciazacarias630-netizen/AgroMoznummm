@@ -188,7 +188,8 @@ class CrashlyticsService {
     // Save real-time crash report to Firestore if connected
     if (db) {
       try {
-        await setDoc(doc(db, "crash_reports", crashId), crashReport);
+        const cleanReport = JSON.parse(JSON.stringify(crashReport));
+        await setDoc(doc(db, "crash_reports", crashId), cleanReport);
       } catch (firestoreErr) {
         console.warn("Could not push crash report to Firestore:", firestoreErr);
       }
