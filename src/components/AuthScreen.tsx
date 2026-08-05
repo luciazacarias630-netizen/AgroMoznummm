@@ -67,6 +67,29 @@ export const AuthScreen: React.FC = () => {
 
   const selectedProvinceObj = MOZAMBIQUE_PROVINCES.find((p) => p.name === regProvince);
 
+  const handleRoleSelect = (role: UserRole, mode: "LOGIN" | "REGISTER" = "LOGIN") => {
+    setSelectedRole(role);
+    setAuthMode(mode);
+    setLoginPhone("");
+    setLoginPass("");
+    setLoginError("");
+    setRegName("");
+    setRegPhone("");
+    setRegEmail("");
+    setRegPass("");
+    setRegConfirmPass("");
+    setFarmName("");
+    setBio("");
+    setLicensePlate("");
+    setRegisterError("");
+  };
+
+  const handleModeSwitch = (mode: "LOGIN" | "REGISTER") => {
+    setAuthMode(mode);
+    setLoginError("");
+    setRegisterError("");
+  };
+
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError("");
@@ -236,22 +259,16 @@ export const AuthScreen: React.FC = () => {
 
                 <div className="space-y-2.5 pt-4 border-t border-slate-700/60">
                   <button
-                    onClick={() => {
-                      setSelectedRole("FARMER");
-                      setAuthMode("LOGIN");
-                    }}
-                    className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-extrabold transition-all shadow-lg shadow-emerald-900/40 flex items-center justify-center gap-2"
+                    onClick={() => handleRoleSelect("FARMER", "LOGIN")}
+                    className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-extrabold transition-all shadow-lg shadow-emerald-900/40 flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <span>Entrar como Agricultor</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
 
                   <button
-                    onClick={() => {
-                      setSelectedRole("FARMER");
-                      setAuthMode("REGISTER");
-                    }}
-                    className="w-full py-2.5 px-4 bg-slate-700/80 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2"
+                    onClick={() => handleRoleSelect("FARMER", "REGISTER")}
+                    className="w-full py-2.5 px-4 bg-slate-700/80 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <span>Criar Nova Conta de Agricultor</span>
                   </button>
@@ -280,22 +297,16 @@ export const AuthScreen: React.FC = () => {
 
                 <div className="space-y-2.5 pt-4 border-t border-slate-700/60">
                   <button
-                    onClick={() => {
-                      setSelectedRole("BUYER");
-                      setAuthMode("LOGIN");
-                    }}
-                    className="w-full py-3 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-extrabold transition-all shadow-lg shadow-amber-900/40 flex items-center justify-center gap-2"
+                    onClick={() => handleRoleSelect("BUYER", "LOGIN")}
+                    className="w-full py-3 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-extrabold transition-all shadow-lg shadow-amber-900/40 flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <span>Entrar como Comprador</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
 
                   <button
-                    onClick={() => {
-                      setSelectedRole("BUYER");
-                      setAuthMode("REGISTER");
-                    }}
-                    className="w-full py-2.5 px-4 bg-slate-700/80 hover:bg-slate-700 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2"
+                    onClick={() => handleRoleSelect("BUYER", "REGISTER")}
+                    className="w-full py-2.5 px-4 bg-slate-700/80 hover:bg-slate-700 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <span>Criar Nova Conta de Comprador</span>
                   </button>
@@ -324,22 +335,16 @@ export const AuthScreen: React.FC = () => {
 
                 <div className="space-y-2.5 pt-4 border-t border-slate-700/60">
                   <button
-                    onClick={() => {
-                      setSelectedRole("DRIVER");
-                      setAuthMode("LOGIN");
-                    }}
-                    className="w-full py-3 px-4 bg-emerald-700 hover:bg-emerald-600 text-white rounded-xl text-xs font-extrabold transition-all shadow-lg shadow-emerald-900/40 flex items-center justify-center gap-2"
+                    onClick={() => handleRoleSelect("DRIVER", "LOGIN")}
+                    className="w-full py-3 px-4 bg-emerald-700 hover:bg-emerald-600 text-white rounded-xl text-xs font-extrabold transition-all shadow-lg shadow-emerald-900/40 flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <span>Entrar como Transportador</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
 
                   <button
-                    onClick={() => {
-                      setSelectedRole("DRIVER");
-                      setAuthMode("REGISTER");
-                    }}
-                    className="w-full py-2.5 px-4 bg-slate-700/80 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2"
+                    onClick={() => handleRoleSelect("DRIVER", "REGISTER")}
+                    className="w-full py-2.5 px-4 bg-slate-700/80 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <span>Criar Nova Conta de Transportador</span>
                   </button>
@@ -435,8 +440,8 @@ export const AuthScreen: React.FC = () => {
                 <div className="grid grid-cols-2 bg-slate-900/90 p-1 rounded-2xl mb-6 border border-slate-700">
                   <button
                     type="button"
-                    onClick={() => setAuthMode("LOGIN")}
-                    className={`py-2 text-xs font-bold rounded-xl transition-all ${
+                    onClick={() => handleModeSwitch("LOGIN")}
+                    className={`py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
                       authMode === "LOGIN"
                         ? "bg-emerald-600 text-white shadow-md"
                         : "text-slate-400 hover:text-slate-200"
@@ -446,8 +451,8 @@ export const AuthScreen: React.FC = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setAuthMode("REGISTER")}
-                    className={`py-2 text-xs font-bold rounded-xl transition-all ${
+                    onClick={() => handleModeSwitch("REGISTER")}
+                    className={`py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
                       authMode === "REGISTER"
                         ? "bg-amber-600 text-white shadow-md"
                         : "text-slate-400 hover:text-slate-200"
@@ -468,7 +473,7 @@ export const AuthScreen: React.FC = () => {
 
               {/* LOGIN FORM */}
               {authMode === "LOGIN" ? (
-                <form onSubmit={handleLoginSubmit} className="space-y-4">
+                <form onSubmit={handleLoginSubmit} className="space-y-4" autoComplete="on">
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1">
                       Número de Telefone ou E-mail
@@ -478,6 +483,7 @@ export const AuthScreen: React.FC = () => {
                       <input
                         type="text"
                         required
+                        autoComplete="username tel"
                         placeholder="Ex: 841234567 ou 861122334"
                         value={loginPhone}
                         onChange={(e) => setLoginPhone(e.target.value)}
@@ -495,6 +501,7 @@ export const AuthScreen: React.FC = () => {
                       <input
                         type="password"
                         required
+                        autoComplete="current-password"
                         placeholder="••••••••"
                         value={loginPass}
                         onChange={(e) => setLoginPass(e.target.value)}
@@ -503,41 +510,14 @@ export const AuthScreen: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="pt-2 space-y-3">
+                  <div className="pt-2">
                     <button
                       type="submit"
-                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-900/50 transition-all flex items-center justify-center gap-2"
+                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-900/50 transition-all flex items-center justify-center gap-2 cursor-pointer"
                     >
                       <span>Entrar na AgroMoz</span>
                       <ArrowRight className="w-4 h-4" />
                     </button>
-
-                    {selectedRole !== "ADMIN" && users.filter((u) => u.role === selectedRole).length > 0 && (
-                      <div className="pt-2 border-t border-slate-700/60 text-left">
-                        <span className="text-[10px] font-bold text-slate-400 block mb-1.5 uppercase tracking-wider">
-                          Contas Registadas ({selectedRole === "FARMER" ? "Agricultores" : selectedRole === "BUYER" ? "Compradores" : selectedRole === "DRIVER" ? "Transportadores" : "Admins"}):
-                        </span>
-                        <div className="flex flex-wrap gap-1.5">
-                          {users
-                            .filter((u) => u.role === selectedRole)
-                            .map((u) => (
-                              <button
-                                key={u.id}
-                                type="button"
-                                onClick={() => {
-                                  setLoginPhone(u.phone);
-                                  setLoginPass(u.password || "123");
-                                  setLoginError("");
-                                }}
-                                className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-700 text-[11px] text-emerald-300 border border-slate-700 transition-all flex items-center gap-1.5"
-                              >
-                                <span className="font-bold">{u.name}</span>
-                                <span className="text-slate-400 text-[10px]">({u.phone})</span>
-                              </button>
-                            ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </form>
               ) : (
@@ -585,6 +565,7 @@ export const AuthScreen: React.FC = () => {
                     <input
                       type="text"
                       required
+                      autoComplete="name"
                       placeholder="Ex: Mateus Cossa"
                       value={regName}
                       onChange={(e) => setRegName(e.target.value)}
@@ -600,6 +581,7 @@ export const AuthScreen: React.FC = () => {
                       <input
                         type="tel"
                         required
+                        autoComplete="tel"
                         placeholder="Ex: 841234567"
                         value={regPhone}
                         onChange={(e) => setRegPhone(e.target.value)}
@@ -612,6 +594,7 @@ export const AuthScreen: React.FC = () => {
                       </label>
                       <input
                         type="email"
+                        autoComplete="email"
                         placeholder="seu.email@agromoz.mz"
                         value={regEmail}
                         onChange={(e) => setRegEmail(e.target.value)}
@@ -762,6 +745,7 @@ export const AuthScreen: React.FC = () => {
                       <input
                         type="password"
                         required
+                        autoComplete="new-password"
                         placeholder="••••••••"
                         value={regPass}
                         onChange={(e) => setRegPass(e.target.value)}
@@ -775,6 +759,7 @@ export const AuthScreen: React.FC = () => {
                       <input
                         type="password"
                         required
+                        autoComplete="new-password"
                         placeholder="••••••••"
                         value={regConfirmPass}
                         onChange={(e) => setRegConfirmPass(e.target.value)}
