@@ -6,6 +6,9 @@ export type DeliveryStatus =
   | "Pedido recebido"
   | "Preparando encomenda"
   | "Entregador a caminho"
+  | "Em Rota para Machamba"
+  | "Produto Coletado"
+  | "Em Rota para Comprador"
   | "Entregue"
   | "Cancelado";
 

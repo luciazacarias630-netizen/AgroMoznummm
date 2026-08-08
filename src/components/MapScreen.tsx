@@ -301,35 +301,53 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     }
   }, [currentOrder.deliveryStatus]);
 
+  // Ref to hold current driver position safely without side effects in state updater
+  const driverPosRef = useRef(driverPos);
+  useEffect(() => {
+    driverPosRef.current = driverPos;
+  }, [driverPos]);
+
+  // Update when selectedOrderId changes
+  useEffect(() => {
+    if (selectedOrderId) {
+      const found = activeOrders.find((o) => o.id === selectedOrderId);
+      if (found) {
+        setCurrentOrder(found);
+        if (found.driverCoords) setDriverPos(found.driverCoords);
+      }
+    }
+  }, [selectedOrderId, orders]);
+
   // Simulation step
   useEffect(() => {
     if (!isSimulating || isLiveGpsActive) return;
 
     simulationTimerRef.current = setInterval(() => {
-      setDriverPos((prev) => {
-        const step = 0.0008;
-        const latDiff = destPos.lat - prev.lat;
-        const lngDiff = destPos.lng - prev.lng;
+      const prev = driverPosRef.current;
+      const step = 0.0008;
+      const latDiff = destPos.lat - prev.lat;
+      const lngDiff = destPos.lng - prev.lng;
 
-        if (Math.abs(latDiff) < 0.001 && Math.abs(lngDiff) < 0.001) {
-          setIsSimulating(false);
-          updateOrderStatus(currentOrder.id, "Entregue");
-          return destPos;
-        }
+      if (Math.abs(latDiff) < 0.001 && Math.abs(lngDiff) < 0.001) {
+        if (simulationTimerRef.current) clearInterval(simulationTimerRef.current);
+        setIsSimulating(false);
+        setDriverPos(destPos);
+        updateOrderStatus(currentOrder.id, "Entregue");
+        return;
+      }
 
-        const nextLat = prev.lat + Math.sign(latDiff) * Math.min(Math.abs(latDiff), step);
-        const nextLng = prev.lng + Math.sign(lngDiff) * Math.min(Math.abs(lngDiff), step);
-        const newPos = { lat: nextLat, lng: nextLng };
+      const nextLat = prev.lat + Math.sign(latDiff) * Math.min(Math.abs(latDiff), step);
+      const nextLng = prev.lng + Math.sign(lngDiff) * Math.min(Math.abs(lngDiff), step);
+      const newPos = { lat: nextLat, lng: nextLng };
 
-        updateDriverLocation(currentOrder.id, newPos);
-        return newPos;
-      });
+      setDriverPos(newPos);
+      updateDriverLocation(currentOrder.id, newPos);
     }, 2500);
 
     return () => {
       if (simulationTimerRef.current) clearInterval(simulationTimerRef.current);
     };
-  }, [isSimulating, isLiveGpsActive, destPos, currentOrder.id]);
+  }, [isSimulating, isLiveGpsActive, destPos, currentOrder.id, updateDriverLocation, updateOrderStatus]);
 
   // Center on Driver or Destination
   const handleCenterOnDriver = () => {

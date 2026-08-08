@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useAgro } from "../context/AgroContext";
 import { RealtimeGpsMap } from "./RealtimeGpsMap";
 import { Order } from "../types";
+import { resolveOrderRouteCoordinates, calculateDistanceKm } from "../utils/routeLocationResolver";
 import {
   Truck,
   MapPin,
@@ -30,15 +31,50 @@ export const DriverDashboard: React.FC = () => {
     currentUser,
     orders,
     proposals,
+    machambas,
     assignDriverToOrder,
     submitDeliveryProposal,
     updateOrderStatus,
+    updateDriverLocation,
     confirmDeliveryByDriver,
     testFcmPushNotification,
   } = useAgro();
 
   // State for GPS Toggle Switch (Interruptor de Estado do GPS)
   const [isGpsEnabled, setIsGpsEnabled] = useState<boolean>(true);
+  const [activeToastAlert, setActiveToastAlert] = useState<{
+    id: string;
+    title: string;
+    message: string;
+    type: "machamba" | "buyer";
+    distMeters: number;
+  } | null>(null);
+
+  const playedAlertsRef = useRef<Set<string>>(new Set());
+
+  // Web Audio API Sound Alert Synthesizer for Proximity
+  const playProximityAlertSound = (type: "machamba" | "buyer") => {
+    try {
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      const freq = type === "machamba" ? 880 : 1046.5; // A5 for machamba, C6 for buyer domicile
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, ctx.currentTime);
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.8);
+    } catch (e) {
+      console.log("Audio alert playback error:", e);
+    }
+  };
 
   // Proposal Modal State
   const [proposalModalOrder, setProposalModalOrder] = useState<Order | null>(null);
@@ -46,6 +82,9 @@ export const DriverDashboard: React.FC = () => {
   const [proposedMsg, setProposedMsg] = useState<string>("Recolho hoje na machamba e entrego em 24h.");
   const [estimatedHours, setEstimatedHours] = useState<string>("Entrega estimada em 24h");
   const [proposalSuccessMsg, setProposalSuccessMsg] = useState<string | null>(null);
+
+  // Route Preview Modal State for available/active deliveries
+  const [routePreviewModalOrder, setRoutePreviewModalOrder] = useState<Order | null>(null);
 
   // Completion modal state
   const [completedOrderModal, setCompletedOrderModal] = useState<{
@@ -57,17 +96,101 @@ export const DriverDashboard: React.FC = () => {
   const availableDeliveries = orders.filter((o) => !o.driverId && o.deliveryStatus === "Pedido recebido");
   const myDeliveries = orders.filter((o) => o.driverId === currentUser?.id);
   const activeDeliveries = myDeliveries.filter((o) => o.deliveryStatus !== "Entregue");
-  const completedDeliveries = myDeliveries.filter((o) => o.deliveryStatus === "Entregue");
+  const completedDeliveries = myDeliveries.filter((o) => o.driverId === currentUser?.id && o.deliveryStatus === "Entregue");
+
+  // BROWSER GEOLOCATION WATCHER (navigator.geolocation)
+  useEffect(() => {
+    if (!isGpsEnabled || activeDeliveries.length === 0) return;
+    if (!("geolocation" in navigator)) return;
+
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        const newLoc = { lat, lng };
+
+        activeDeliveries.forEach((ord) => {
+          updateDriverLocation(ord.id, newLoc);
+
+          const routeCoords = resolveOrderRouteCoordinates(ord, machambas);
+          const distToMachambaKm = calculateDistanceKm(lat, lng, routeCoords.machamba.lat, routeCoords.machamba.lng);
+          const distToBuyerKm = calculateDistanceKm(lat, lng, routeCoords.buyer.lat, routeCoords.buyer.lng);
+
+          const distMachambaMeters = Math.round(distToMachambaKm * 1000);
+          const distBuyerMeters = Math.round(distToBuyerKm * 1000);
+
+          // 500 METERS RADIUS CHECKER - MACHAMBA (Coleta)
+          if (
+            distMachambaMeters <= 500 &&
+            ord.deliveryStatus !== "Produto Coletado" &&
+            ord.deliveryStatus !== "Em Rota para Comprador" &&
+            ord.deliveryStatus !== "Entregue"
+          ) {
+            const alertKey = `${ord.id}-machamba-500m`;
+            if (!playedAlertsRef.current.has(alertKey)) {
+              playedAlertsRef.current.add(alertKey);
+              playProximityAlertSound("machamba");
+              setActiveToastAlert({
+                id: ord.id,
+                title: "🚨 PONTO DE COLETA ALCANÇADO (< 500m)",
+                message: `Você está a ${distMachambaMeters}m da Machamba de ${ord.farmerName}! Chegou ao ponto de partida / recolha para carregar ${ord.productName}.`,
+                type: "machamba",
+                distMeters: distMachambaMeters,
+              });
+            }
+          }
+
+          // 500 METERS RADIUS CHECKER - BUYER DOMICILE (Entrega)
+          if (
+            distBuyerMeters <= 500 &&
+            (ord.deliveryStatus === "Em Rota para Comprador" || ord.deliveryStatus === "Produto Coletado" || ord.deliveryStatus === "Em Trânsito") &&
+            ord.deliveryStatus !== "Entregue"
+          ) {
+            const alertKey = `${ord.id}-buyer-500m`;
+            if (!playedAlertsRef.current.has(alertKey)) {
+              playedAlertsRef.current.add(alertKey);
+              playProximityAlertSound("buyer");
+              setActiveToastAlert({
+                id: ord.id,
+                title: "🚨 PONTO DE ENTREGA ALCANÇADO (< 500m)",
+                message: `Você está a ${distBuyerMeters}m do Domicílio de ${ord.buyerName} (${ord.buyerAddress})! Chegou ao ponto de destino final.`,
+                type: "buyer",
+                distMeters: distBuyerMeters,
+              });
+            }
+          }
+        });
+      },
+      (err) => {
+        console.warn("GPS Geolocation position watch error:", err);
+      },
+      { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 }
+    );
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+    };
+  }, [isGpsEnabled, activeDeliveries.length, machambas]);
 
   const handleAcceptTransport = (orderId: string) => {
+    const targetOrder = orders.find((o) => o.id === orderId);
     assignDriverToOrder(
       orderId,
       currentUser?.id || "driver-1",
       currentUser?.name || "Carlos Nhantumbo",
       currentUser?.phone || "875544332"
     );
-    // Enable GPS when accepting a new transport
+
+    // Automatically set delivery status to Em Rota para Machamba and enable GPS
+    updateOrderStatus(orderId, "Em Rota para Machamba");
     setIsGpsEnabled(true);
+
+    if (targetOrder) {
+      setProposalSuccessMsg(
+        `✅ Encomenda #${orderId} aceite com sucesso! Rota otimizada calculada automaticamente: Motorista ➔ Machamba (${targetOrder.farmerName}) ➔ Domicílio (${targetOrder.buyerName}).`
+      );
+      setTimeout(() => setProposalSuccessMsg(null), 8000);
+    }
   };
 
   const handleCompleteAndRedirect = (ord: Order) => {
@@ -105,6 +228,40 @@ export const DriverDashboard: React.FC = () => {
 
   return (
     <div className="space-y-6 pb-16">
+      {/* FLOATING PROXIMITY TOAST ALERT BANNER (< 500m RADIUS) */}
+      {activeToastAlert && (
+        <div className="p-4 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 text-slate-950 rounded-3xl shadow-xl border-2 border-amber-600 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-bounce">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-slate-950 text-amber-300 rounded-2xl shrink-0 shadow-md">
+              <BellRing className="w-6 h-6 animate-pulse" />
+            </div>
+            <div>
+              <strong className="block text-sm font-black text-slate-950 uppercase tracking-tight">
+                {activeToastAlert.title}
+              </strong>
+              <p className="text-xs text-slate-950 font-bold mt-0.5">
+                {activeToastAlert.message}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+            <button
+              onClick={() => playProximityAlertSound(activeToastAlert.type)}
+              className="px-3 py-1.5 bg-slate-950 text-amber-300 hover:bg-slate-900 font-black rounded-xl text-xs flex items-center gap-1 shadow-md transition-all active:scale-95 cursor-pointer"
+            >
+              🔊 Tocar Alerta
+            </button>
+            <button
+              onClick={() => setActiveToastAlert(null)}
+              className="px-3 py-1.5 bg-slate-950/20 hover:bg-slate-950/30 text-slate-950 font-black rounded-xl text-xs transition-all cursor-pointer"
+            >
+              Fechar ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* HEADER */}
       <div className="bg-white p-6 rounded-3xl shadow-xs border border-emerald-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -294,26 +451,40 @@ export const DriverDashboard: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* GPS COORDINATES & GOOGLE MAPS LINK */}
-                  <div className="flex items-center justify-between text-xs bg-emerald-950 text-white p-3 rounded-2xl">
+                  {/* GPS COORDINATES & UNIFIED ROUTE MAP BUTTON */}
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 text-xs bg-slate-950 text-white p-3 rounded-2xl border border-slate-800">
                     <div className="flex items-center gap-2">
-                      <Navigation className="w-4 h-4 text-amber-400 animate-pulse" />
+                      <Navigation className="w-4 h-4 text-amber-400 animate-pulse shrink-0" />
                       <div>
-                        <span className="text-[10px] text-emerald-300 font-bold block">Coordenadas GPS:</span>
-                        <span className="font-mono text-[11px] font-bold text-white">
-                          -25.8605, 32.6102
+                        <span className="text-[10px] text-emerald-300 font-extrabold uppercase block">
+                          Rota Completa com Pontos de Paragem:
+                        </span>
+                        <span className="text-[11px] font-bold text-slate-200">
+                          Recolha na Machamba ➔ Entrega no Domicílio
                         </span>
                       </div>
                     </div>
 
-                    <a
-                      href={googleMapsUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold rounded-xl text-[11px] flex items-center gap-1 transition-all"
-                    >
-                      <MapPin className="w-3.5 h-3.5" /> Abrir GPS
-                    </a>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => setRoutePreviewModalOrder(ord)}
+                        className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer"
+                        title="Ver mapa com o cálculo de todos os pontos de paragem"
+                      >
+                        <Navigation className="w-3.5 h-3.5 text-amber-300" />
+                        <span>Calcular Rota no Mapa</span>
+                      </button>
+
+                      <a
+                        href={googleMapsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs flex items-center gap-1 transition-all"
+                        title="Abrir no Google Maps"
+                      >
+                        <MapPin className="w-3.5 h-3.5 text-amber-400" />
+                      </a>
+                    </div>
                   </div>
 
                   {/* PROPOSAL STATUS BADGE IF ALREADY PROPOSED */}
@@ -435,11 +606,107 @@ export const DriverDashboard: React.FC = () => {
               </div>
             )}
 
-            {activeDeliveries.map((ord) => (
-              <div
-                key={ord.id}
-                className="p-5 bg-emerald-50/40 rounded-3xl border border-emerald-200 space-y-4 shadow-sm"
-              >
+            {activeDeliveries.map((ord) => {
+              const routeCoords = resolveOrderRouteCoordinates(ord, machambas);
+              const driverPos = ord.driverCurrentLocation || routeCoords.driver;
+              const distToMachamba = calculateDistanceKm(driverPos.lat, driverPos.lng, routeCoords.machamba.lat, routeCoords.machamba.lng);
+              const distToBuyer = calculateDistanceKm(driverPos.lat, driverPos.lng, routeCoords.buyer.lat, routeCoords.buyer.lng);
+
+              const isCloseMachamba =
+                ord.deliveryStatus !== "Produto Coletado" &&
+                ord.deliveryStatus !== "Em Rota para Comprador" &&
+                ord.deliveryStatus !== "Em Trânsito" &&
+                ord.deliveryStatus !== "Entregue" &&
+                distToMachamba <= 3.5;
+
+              const isCloseBuyer =
+                (ord.deliveryStatus === "Em Rota para Comprador" ||
+                  ord.deliveryStatus === "Produto Coletado" ||
+                  ord.deliveryStatus === "Em Trânsito") &&
+                distToBuyer <= 3.5;
+
+              return (
+                <div
+                  key={ord.id}
+                  className="p-5 bg-emerald-50/40 rounded-3xl border border-emerald-200 space-y-4 shadow-sm"
+                >
+                  {/* AUTOMATIC VISUAL & SOUND NOTIFICATION - MACHAMBA PROXIMITY */}
+                  {isCloseMachamba && (
+                    <div className="p-3.5 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 text-slate-950 rounded-2xl border border-amber-600 shadow-md flex items-center justify-between gap-3 animate-pulse">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-2 bg-slate-950 text-amber-300 rounded-xl shrink-0">
+                          <BellRing className="w-5 h-5 animate-bounce" />
+                        </div>
+                        <div>
+                          <strong className="block text-xs uppercase font-black text-slate-950">
+                            🚨 NOTIFICAÇÃO SONORA E VISUAL: PRÓXIMO DA MACHAMBA ({distToMachamba} km)
+                          </strong>
+                          <p className="text-xs text-slate-900 font-bold">
+                            A chegar ao ponto de recolha na Machamba de <strong>{ord.farmerName}</strong> para carregar {ord.productName}!
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => playProximityAlertSound("machamba")}
+                          className="px-2.5 py-1.5 bg-slate-950/20 hover:bg-slate-950/30 text-slate-950 font-black rounded-xl text-[11px] transition-all cursor-pointer"
+                          title="Tocar Sinal Sonoro"
+                        >
+                          🔊 Sinal Sonoro
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            updateOrderStatus(ord.id, "Produto Coletado");
+                            playProximityAlertSound("machamba");
+                            setIsGpsEnabled(true);
+                          }}
+                          className="px-3.5 py-2 bg-slate-950 hover:bg-slate-900 text-amber-300 font-extrabold rounded-xl text-xs shadow-md transition-all active:scale-95 cursor-pointer"
+                        >
+                          Confirmar Coleta 🌾
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* AUTOMATIC VISUAL & SOUND NOTIFICATION - BUYER DOMICILE PROXIMITY */}
+                  {isCloseBuyer && (
+                    <div className="p-3.5 bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-600 text-white rounded-2xl border border-emerald-700 shadow-md flex items-center justify-between gap-3 animate-pulse">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-2 bg-slate-950 text-emerald-300 rounded-xl shrink-0">
+                          <BellRing className="w-5 h-5 animate-bounce" />
+                        </div>
+                        <div>
+                          <strong className="block text-xs uppercase font-black text-amber-300">
+                            🚨 NOTIFICAÇÃO SONORA E VISUAL: PRÓXIMO DO DOMICÍLIO ({distToBuyer} km)
+                          </strong>
+                          <p className="text-xs text-emerald-50 font-bold">
+                            A chegar ao destino de entrega no Domicílio de <strong>{ord.buyerName}</strong> ({ord.buyerAddress}).
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => playProximityAlertSound("buyer")}
+                          className="px-2.5 py-1.5 bg-slate-950/30 hover:bg-slate-950/50 text-amber-300 font-black rounded-xl text-[11px] transition-all cursor-pointer"
+                          title="Tocar Sinal Sonoro"
+                        >
+                          🔊 Sinal Sonoro
+                        </button>
+
+                        {ord.buyerPhone && (
+                          <a
+                            href={`tel:${ord.buyerPhone}`}
+                            className="px-3 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black rounded-xl text-xs shadow-md transition-all active:scale-95 cursor-pointer"
+                          >
+                            Ligar Comprador 📞
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
@@ -470,20 +737,6 @@ export const DriverDashboard: React.FC = () => {
                       <Phone className="w-3.5 h-3.5 text-emerald-700" /> Ligar
                     </a>
 
-                    {ord.deliveryStatus !== "Em Trânsito" && (
-                      <button
-                        onClick={() => {
-                          updateOrderStatus(ord.id, "Em Trânsito");
-                          setIsGpsEnabled(true);
-                        }}
-                        className="py-2.5 px-3.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
-                        title="Iniciar transporte e notificar comprador sobre 'Em Trânsito'"
-                      >
-                        <Truck className="w-4 h-4 text-slate-950 animate-bounce" />
-                        Iniciar Rota (Em Trânsito)
-                      </button>
-                    )}
-
                     <button
                       onClick={() => handleCompleteAndRedirect(ord)}
                       className="py-2.5 px-4 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold flex items-center gap-1.5 shrink-0 shadow-md transition-all active:scale-95 cursor-pointer"
@@ -492,6 +745,96 @@ export const DriverDashboard: React.FC = () => {
                       Terminar Entrega & Desligar GPS
                     </button>
                   </div>
+                </div>
+
+                {/* ROTA OTIMIZADA AUTOMÁTICA & NAVEGAÇÃO GOOGLE MAPS MULTI-PARAGEM */}
+                <div className="p-3.5 bg-slate-900 text-white rounded-2xl border border-slate-800 space-y-2.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <Navigation className="w-4 h-4 text-amber-400 shrink-0 animate-pulse" />
+                      <span className="font-extrabold text-slate-100">
+                        📍 Rota Otimizada de Transporte:
+                      </span>
+                    </div>
+                    <span className="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded border border-emerald-700/60 font-mono font-bold">
+                      {Math.round((distToMachamba + distToBuyer) * 10) / 10} km Total (Machamba + Domicílio)
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                    <div className="p-2 bg-slate-800/90 rounded-xl border border-amber-500/30 flex items-center justify-between">
+                      <span className="text-amber-300 font-bold">1. Coleta na Machamba ({ord.farmerName}):</span>
+                      <strong className="text-white">{distToMachamba} km • ~{Math.max(Math.round((distToMachamba / 40) * 60), 1)} min</strong>
+                    </div>
+                    <div className="p-2 bg-slate-800/90 rounded-xl border border-emerald-500/30 flex items-center justify-between">
+                      <span className="text-emerald-300 font-bold">2. Entrega Domicílio ({ord.buyerName}):</span>
+                      <strong className="text-white">{distToBuyer} km • ~{Math.max(Math.round((distToBuyer / 40) * 60), 1)} min</strong>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-800/80">
+                    <span className="text-[10px] text-slate-400 font-semibold">
+                      Calculado automaticamente desde o ponto GPS atual
+                    </span>
+                    <a
+                      href={`https://www.google.com/maps/dir/?api=1&origin=${driverPos.lat},${driverPos.lng}&destination=${routeCoords.buyer.lat},${routeCoords.buyer.lng}&waypoints=${routeCoords.machamba.lat},${routeCoords.machamba.lng}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
+                    >
+                      <MapPin className="w-3.5 h-3.5" /> Google Maps Rota Otimizada ↗
+                    </a>
+                  </div>
+                </div>
+
+                {/* CONTROLO DE ESTADO DE ENTREGA (SISTEMA DE ETAPAS) */}
+                <div className="flex flex-wrap items-center gap-2 p-3 bg-white rounded-2xl border border-emerald-100 text-xs shadow-2xs">
+                  <span className="font-extrabold text-slate-800 text-[11px] uppercase mr-1">
+                    Estado da Entrega:
+                  </span>
+                  <button
+                    onClick={() => updateOrderStatus(ord.id, "Em Rota para Machamba")}
+                    className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+                      ord.deliveryStatus === "Em Rota para Machamba" || ord.deliveryStatus === "Entregador a caminho"
+                        ? "bg-amber-500 text-slate-950 font-black shadow-xs ring-2 ring-amber-300"
+                        : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                    }`}
+                  >
+                    1. Em Rota para Machamba 🚜
+                  </button>
+
+                  <button
+                    onClick={() => updateOrderStatus(ord.id, "Produto Coletado")}
+                    className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+                      ord.deliveryStatus === "Produto Coletado"
+                        ? "bg-emerald-600 text-white font-black shadow-xs ring-2 ring-emerald-300"
+                        : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                    }`}
+                  >
+                    2. Produto Coletado 🌾
+                  </button>
+
+                  <button
+                    onClick={() => updateOrderStatus(ord.id, "Em Rota para Comprador")}
+                    className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+                      ord.deliveryStatus === "Em Rota para Comprador" || ord.deliveryStatus === "Em Trânsito"
+                        ? "bg-emerald-800 text-amber-300 font-black shadow-xs ring-2 ring-emerald-400"
+                        : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                    }`}
+                  >
+                    3. Em Rota para Comprador 🚚
+                  </button>
+
+                  <button
+                    onClick={() => handleCompleteAndRedirect(ord)}
+                    className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+                      ord.deliveryStatus === "Entregue"
+                        ? "bg-emerald-700 text-white font-black shadow-xs"
+                        : "bg-emerald-100 text-emerald-900 border border-emerald-300 hover:bg-emerald-200"
+                    }`}
+                  >
+                    4. Entregue ✅
+                  </button>
                 </div>
 
                 {/* MAPA DE GPS SE ESTIVER ATIVO, OU CONTAINER DE AVISO SE DESATIVADO */}
@@ -541,7 +884,8 @@ export const DriverDashboard: React.FC = () => {
                   )}
                 </div>
               </div>
-            ))}
+            );
+          })}
           </div>
         )}
       </div>
@@ -766,6 +1110,63 @@ export const DriverDashboard: React.FC = () => {
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CÁLCULO E VISUALIZAÇÃO DE ROTA COMPLETA NO MAPA */}
+      {routePreviewModalOrder && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white max-w-4xl w-full rounded-3xl p-6 shadow-2xl border border-emerald-200 space-y-4 animate-in fade-in zoom-in duration-200 overflow-y-auto max-h-[92vh]">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-emerald-800 text-amber-300 rounded-2xl shadow-sm">
+                  <Navigation className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-base">
+                    Cálculo de Rota Unificada com Pontos de Paragem
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Recolha na Machamba de <strong>{routePreviewModalOrder.farmerName}</strong> ➔ Entrega no Domicílio de <strong>{routePreviewModalOrder.buyerName}</strong>
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setRoutePreviewModalOrder(null)}
+                className="text-slate-500 hover:text-slate-800 font-extrabold text-xs px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 transition-all cursor-pointer"
+              >
+                ✕ Fechar
+              </button>
+            </div>
+
+            {/* MAPA DE GPS DE ROTA COMPLETA */}
+            <RealtimeGpsMap
+              order={routePreviewModalOrder}
+              roleMode="DRIVER"
+              height="h-96"
+            />
+
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t border-slate-100">
+              <button
+                onClick={() => setRoutePreviewModalOrder(null)}
+                className="w-full sm:w-auto px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-800 font-extrabold text-xs rounded-2xl cursor-pointer transition-all"
+              >
+                Voltar ao Painel
+              </button>
+
+              <button
+                onClick={() => {
+                  handleAcceptTransport(routePreviewModalOrder.id);
+                  setRoutePreviewModalOrder(null);
+                }}
+                className="w-full sm:w-auto px-6 py-3 bg-emerald-800 hover:bg-emerald-900 text-white font-extrabold text-xs rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/30 transition-all active:scale-95 cursor-pointer"
+              >
+                <CheckCircle2 className="w-4 h-4 text-amber-300" />
+                <span>Aceitar Este Frete com Rota Calculada (+150 MT)</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

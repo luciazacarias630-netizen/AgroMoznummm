@@ -1717,9 +1717,22 @@ export const AgroProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setOrders((prev) =>
       prev.map((o) => {
         if (o.id === orderId) {
-          affectedOrder = o;
-          const estado = status === "Entregador a caminho" || status === "Preparando encomenda" ? "em_transito" : o.estado || "pendente";
-          return { ...o, deliveryStatus: status, estado, updatedAt: new Date().toISOString() };
+          const isTransportActive =
+            status === "Em Rota para Machamba" ||
+            status === "Produto Coletado" ||
+            status === "Em Rota para Comprador" ||
+            status === "Entregador a caminho" ||
+            status === "Preparando encomenda";
+          const estado = isTransportActive ? "em_transito" : o.estado || "pendente";
+          affectedOrder = { ...o, deliveryStatus: status, estado, updatedAt: new Date().toISOString() };
+          if (db) {
+            updateDoc(doc(db, "orders", orderId), {
+              deliveryStatus: status,
+              estado,
+              updatedAt: new Date().toISOString(),
+            }).catch((e) => console.log("Firestore updateOrderStatus error:", e));
+          }
+          return affectedOrder;
         }
         return o;
       })
